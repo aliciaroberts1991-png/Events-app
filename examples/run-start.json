@@ -1,0 +1,1 @@
+{ "type": "discovery", "executor": "ChatGPT scheduled task", "params": { "scope": "all" } }

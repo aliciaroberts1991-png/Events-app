@@ -182,6 +182,14 @@ describe('runs and the job queue', () => {
     expect(status.last_successful_update_at).toBeTruthy();
   });
 
+  it('accepts empty JSON bodies from automation tools', async () => {
+    const started = await env.research('POST', '/runs', { type: 'discovery' });
+    const res = await env.app.inject({ method: 'POST', url: `/api/research/v1/runs/${started.body.run.id}/heartbeat`, headers: { authorization: `Bearer ${env.token}`, 'content-type': 'application/json' } });
+    expect(res.statusCode).toBe(200);
+    const bad = await env.app.inject({ method: 'POST', url: '/api/research/v1/import', headers: { authorization: `Bearer ${env.token}`, 'content-type': 'application/json' }, payload: '{not json' });
+    expect(bad.statusCode).toBe(400);
+  });
+
   it('marks interrupted runs failed when the lease expires and keeps imported data', async () => {
     const started = await env.research('POST', '/runs', { type: 'discovery' });
     const runId = started.body.run.id;

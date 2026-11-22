@@ -1,0 +1,14 @@
+{
+  "batch_id": "imp_0mwrn0abcDEF123",
+  "idempotency_key": "discovery-2026-11-23-batch-1",
+  "replayed": false,
+  "run_id": "run_0mwrmz9xyzABC45",
+  "counts": { "created": 3, "updated": 1, "unchanged": 0, "error": 0 },
+  "items": [
+    { "type": "artist", "index": 0, "status": "updated", "id": "art_0mwrmw…", "changes": ["description"] },
+    { "type": "event", "index": 0, "ref": "bratislava-dnb-2026-12-05", "status": "created", "id": "evt_0mwrn0…", "changes": [] },
+    { "type": "event", "index": 1, "ref": "vienna-concert", "status": "created", "id": "evt_0mwrn0…", "changes": [], "warnings": ["Unknown genre \"art-rock\" stored as a free tag"] },
+    { "type": "event", "index": 2, "ref": "festival-edition", "status": "created", "id": "evt_0mwrn0…", "changes": [] }
+  ],
+  "feed_items_created": 2
+}

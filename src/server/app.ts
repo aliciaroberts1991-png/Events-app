@@ -36,6 +36,17 @@ export async function buildApp(overrides: Partial<Config> = {}, opts: { now?: ()
     bodyLimit: 5 * 1024 * 1024,
   });
   await app.register(fastifyCookie);
+  // Accept empty JSON bodies (many automation tools send "content-type: application/json" with no body).
+  app.removeContentTypeParser('application/json');
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    const text = typeof body === 'string' ? body : body.toString();
+    if (!text.trim()) return done(null, {});
+    try {
+      done(null, JSON.parse(text));
+    } catch {
+      done(new HttpError(400, 'Request body is not valid JSON'), undefined);
+    }
+  });
 
   app.addHook('onSend', async (_req, reply) => {
     reply.header('x-content-type-options', 'nosniff');

@@ -1,0 +1,2438 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Quartet research API",
+    "version": "1.0.0",
+    "description": "Maintain the event collection: read the watchlist and preferences, import events, artists, festivals and Ibiza residencies, record verification outcomes and report run status. Absent fields keep stored values; null clears them. Personal data is never exposed."
+  },
+  "servers": [
+    {
+      "url": "https://your-app.example.com/api/research/v1"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "ImportPayload": {
+        "type": "object",
+        "properties": {
+          "idempotency_key": {
+            "description": "Re-sending the same key returns the stored result",
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 200
+          },
+          "run_id": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "artists": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "id": {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "keys": {
+                  "maxItems": 10,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 200
+                  }
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                },
+                "aliases": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                },
+                "description": {
+                  "description": "Brief factual introduction to their sound",
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 1500
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description_source": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 2000,
+                      "format": "uri"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "genres": {
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "links": {
+                  "description": "e.g. {\"official\":\"…\",\"resident_advisor\":\"…\",\"musicbrainz\":\"…\"}",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "additionalProperties": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "format": "uri"
+                  }
+                },
+                "country": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Z]{2}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "festivals": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "id": {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "keys": {
+                  "maxItems": 10,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 200
+                  }
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                },
+                "website": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 2000,
+                      "format": "uri"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "country": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Z]{2}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 1500
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "residencies": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "id": {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "keys": {
+                  "maxItems": 10,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 200
+                  }
+                },
+                "season": {
+                  "type": "integer",
+                  "minimum": 2000,
+                  "maximum": 2100
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                },
+                "brand": {
+                  "description": "Party brand or host",
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "venue": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "description": "Stable venue identifier from a source, e.g. \"ra:venue:12345\"",
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 300
+                    },
+                    "address": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 500
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "town": {
+                      "description": "Actual town or district",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "city": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "region": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "country": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Z]{2}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lat": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": -90,
+                          "maximum": 90
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lng": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": -180,
+                          "maximum": 180
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "website": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 2000,
+                          "format": "uri"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timezone": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                },
+                "weekday": {
+                  "description": "1 = Monday … 7 = Sunday",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 7
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "start_date": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "end_date": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "announced",
+                    "confirmed",
+                    "cancelled"
+                  ]
+                },
+                "announced_at": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                      "description": "ISO 8601 instant with offset, e.g. 2026-11-22T09:00:00Z"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "announcement_url": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 2000,
+                      "format": "uri"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 1500
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "residents": {
+                  "maxItems": 60,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "artist_id": {
+                        "type": "string"
+                      },
+                      "artist_key": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "residents_mode": {
+                  "type": "string",
+                  "enum": [
+                    "merge",
+                    "replace"
+                  ]
+                },
+                "ticket_url": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 2000,
+                      "format": "uri"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sources": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "maxLength": 2000,
+                        "format": "uri"
+                      },
+                      "type": {
+                        "default": "other",
+                        "type": "string",
+                        "enum": [
+                          "official_artist",
+                          "venue",
+                          "promoter",
+                          "festival",
+                          "ticketing",
+                          "listing",
+                          "media",
+                          "social",
+                          "user",
+                          "other"
+                        ]
+                      },
+                      "name": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "key": {
+                        "description": "Stable source identifier, also used for duplicate detection",
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "claims": {
+                        "description": "Fields this source supports, e.g. [\"date\",\"lineup\",\"price\"]",
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 60
+                        }
+                      },
+                      "retrieved_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                        "description": "ISO 8601 instant with offset, e.g. 2026-11-22T09:00:00Z"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ]
+                  }
+                },
+                "verified_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "description": "ISO 8601 instant with offset, e.g. 2026-11-22T09:00:00Z"
+                }
+              },
+              "required": [
+                "season",
+                "title",
+                "venue"
+              ]
+            }
+          },
+          "events": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "description": "Your own reference, echoed back in results",
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "id": {
+                  "description": "Existing event id (from a previous result or GET)",
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "source_keys": {
+                  "description": "Stable source identifiers, e.g. \"ra:event:2041234\"",
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 200
+                  }
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "event",
+                    "festival",
+                    "recurring"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 5000
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "expectation": {
+                  "description": "Short \"what to expect\"",
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 5000
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "why_suits_me": {
+                  "description": "Concise, specific reason this might suit the owner",
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 600
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "scheduled",
+                    "cancelled",
+                    "postponed",
+                    "rescheduled"
+                  ]
+                },
+                "status_note": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "start": {
+                  "description": "Event-local start. Date only when the time is not known",
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2})?)?$"
+                },
+                "end": {
+                  "description": "Event-local end; \"HH:mm\" earlier than start means next day",
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^(\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2})?)?|\\d{2}:\\d{2})$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "doors": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^(\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2})?)?|\\d{2}:\\d{2})$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timezone": {
+                  "description": "IANA zone of the event, e.g. Europe/Vienna",
+                  "type": "string"
+                },
+                "recurrence": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "freq": {
+                          "type": "string",
+                          "enum": [
+                            "daily",
+                            "weekly",
+                            "monthly"
+                          ]
+                        },
+                        "interval": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 12
+                        },
+                        "byweekday": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "MO",
+                              "TU",
+                              "WE",
+                              "TH",
+                              "FR",
+                              "SA",
+                              "SU"
+                            ]
+                          }
+                        },
+                        "setpos": {
+                          "type": "integer",
+                          "minimum": -1,
+                          "maximum": 5
+                        },
+                        "monthday": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 31
+                        },
+                        "from": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "until": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "start_time": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^\\d{2}:\\d{2}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "end_time": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^\\d{2}:\\d{2}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "exceptions": {
+                          "maxItems": 400,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                          }
+                        },
+                        "extra_dates": {
+                          "maxItems": 400,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                          }
+                        }
+                      },
+                      "required": [
+                        "freq",
+                        "from"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "venue": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "description": "Stable venue identifier from a source, e.g. \"ra:venue:12345\"",
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 300
+                        },
+                        "address": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 500
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "town": {
+                          "description": "Actual town or district",
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 200
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "city": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 200
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "region": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 200
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "country": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[A-Z]{2}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lat": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "minimum": -90,
+                              "maximum": 90
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lng": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "minimum": -180,
+                              "maximum": 180
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "website": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 2000,
+                              "format": "uri"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "timezone": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "location_text": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 300
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "categories": {
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "categories_mode": {
+                  "type": "string",
+                  "enum": [
+                    "merge",
+                    "replace"
+                  ]
+                },
+                "genres": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "genres_mode": {
+                  "type": "string",
+                  "enum": [
+                    "merge",
+                    "replace"
+                  ]
+                },
+                "lineup": {
+                  "maxItems": 300,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "artist_id": {
+                        "type": "string",
+                        "maxLength": 60
+                      },
+                      "artist_key": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "billing": {
+                        "type": "string",
+                        "enum": [
+                          "headliner",
+                          "support",
+                          "resident",
+                          "host",
+                          "special_guest",
+                          "unknown"
+                        ]
+                      },
+                      "format": {
+                        "description": "live, dj_set, hybrid, av_show, b2b, talk or unknown",
+                        "type": "string",
+                        "enum": [
+                          "live",
+                          "dj_set",
+                          "hybrid",
+                          "av_show",
+                          "b2b",
+                          "talk",
+                          "unknown"
+                        ]
+                      },
+                      "date": {
+                        "description": "Appearance date (festival day), event-local",
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "set_start": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^(\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2})?)?|\\d{2}:\\d{2})$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "set_end": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^(\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2})?)?|\\d{2}:\\d{2})$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "stage": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 120
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "confirmed": {
+                        "description": "false = reported but unverified",
+                        "type": "boolean"
+                      },
+                      "announced_at": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                            "description": "ISO 8601 instant with offset, e.g. 2026-11-22T09:00:00Z"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "source_url": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 2000,
+                            "format": "uri"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "remove": {
+                        "description": "true removes this artist (on that date) from the lineup",
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                },
+                "lineup_mode": {
+                  "type": "string",
+                  "enum": [
+                    "merge",
+                    "replace"
+                  ]
+                },
+                "festival": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "series_id": {
+                          "type": "string",
+                          "maxLength": 60
+                        },
+                        "series_key": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 300
+                        },
+                        "edition": {
+                          "description": "e.g. \"2027\" or \"25th edition\"",
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 100
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "website": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 2000,
+                              "format": "uri"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "residency_id": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 60
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "residency_key": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "occasion": {
+                  "description": "Opening or closing party",
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "opening",
+                        "closing"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "age_restriction": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 60
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "languages": {
+                  "description": "ISO 639-1 codes, or \"none\"",
+                  "anyOf": [
+                    {
+                      "maxItems": 6,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 2,
+                        "maxLength": 10
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "language_importance": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "helpful",
+                        "essential",
+                        "unknown"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "participation": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "spectator",
+                        "participant",
+                        "both"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "performance_format": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "live",
+                        "dj_set",
+                        "hybrid",
+                        "av_show",
+                        "b2b",
+                        "talk",
+                        "unknown"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tickets": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "description": "Official booking link",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 2000,
+                          "format": "uri"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "price_min": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "price_max": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "currency": {
+                      "description": "Original currency",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Z]{3}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "price_note": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 500
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "booking_fee_note": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 500
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "description": "Only \"available\"/\"sold_out\" when verified on a live ticket page",
+                      "type": "string",
+                      "enum": [
+                        "available",
+                        "limited",
+                        "sold_out",
+                        "sale_not_started",
+                        "free",
+                        "door_only",
+                        "unknown"
+                      ]
+                    },
+                    "status_checked_at": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                          "description": "ISO 8601 instant with offset, e.g. 2026-11-22T09:00:00Z"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "presale_at": {
+                      "description": "Presale start, local to sale_timezone",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2})?)?$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "onsale_at": {
+                      "description": "General sale start, local to sale_timezone",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2})?)?$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sale_timezone": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sale_note": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 500
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tiers": {
+                      "anyOf": [
+                        {
+                          "maxItems": 40,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 300
+                              },
+                              "price": {
+                                "anyOf": [
+                                  {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "price_max": {
+                                "anyOf": [
+                                  {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "currency": {
+                                "type": "string",
+                                "pattern": "^[A-Z]{3}$"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "available",
+                                  "limited",
+                                  "sold_out",
+                                  "sale_not_started",
+                                  "free",
+                                  "door_only",
+                                  "unknown"
+                                ]
+                              },
+                              "day": {
+                                "description": "For day tickets",
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "note": {
+                                "type": "string",
+                                "maxLength": 500
+                              }
+                            },
+                            "required": [
+                              "name"
+                            ]
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "camping": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "available": {
+                          "type": [
+                            "boolean",
+                            "null"
+                          ]
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 500
+                        },
+                        "url": {
+                          "type": "string",
+                          "maxLength": 2000,
+                          "format": "uri"
+                        }
+                      },
+                      "required": [
+                        "available"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "accommodation": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "maxLength": 2000,
+                          "format": "uri"
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 500
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "highlight": {
+                  "type": "boolean"
+                },
+                "prominence": {
+                  "description": "How notable the event is (0–100)",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "announced_at": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                      "description": "ISO 8601 instant with offset, e.g. 2026-11-22T09:00:00Z"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sources": {
+                  "maxItems": 30,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "maxLength": 2000,
+                        "format": "uri"
+                      },
+                      "type": {
+                        "default": "other",
+                        "type": "string",
+                        "enum": [
+                          "official_artist",
+                          "venue",
+                          "promoter",
+                          "festival",
+                          "ticketing",
+                          "listing",
+                          "media",
+                          "social",
+                          "user",
+                          "other"
+                        ]
+                      },
+                      "name": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "key": {
+                        "description": "Stable source identifier, also used for duplicate detection",
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "claims": {
+                        "description": "Fields this source supports, e.g. [\"date\",\"lineup\",\"price\"]",
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 60
+                        }
+                      },
+                      "retrieved_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                        "description": "ISO 8601 instant with offset, e.g. 2026-11-22T09:00:00Z"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ]
+                  }
+                },
+                "sources_mode": {
+                  "type": "string",
+                  "enum": [
+                    "merge",
+                    "replace"
+                  ]
+                },
+                "verified_at": {
+                  "description": "When these facts were last checked",
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "unverified_fields": {
+                  "anyOf": [
+                    {
+                      "maxItems": 40,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 60
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tba_fields": {
+                  "anyOf": [
+                    {
+                      "maxItems": 40,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 60
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "conflicts": {
+                  "anyOf": [
+                    {
+                      "maxItems": 20,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "maxLength": 60
+                          },
+                          "note": {
+                            "type": "string",
+                            "maxLength": 500
+                          },
+                          "values": {
+                            "maxItems": 10,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "value": {
+                                  "type": "string",
+                                  "maxLength": 300
+                                },
+                                "source_url": {
+                                  "type": "string",
+                                  "maxLength": 2000,
+                                  "format": "uri"
+                                }
+                              },
+                              "required": [
+                                "value"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "values"
+                        ]
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "travel": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string",
+                          "maxLength": 100
+                        },
+                        "mode": {
+                          "type": "string",
+                          "maxLength": 60
+                        },
+                        "duration_minutes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 3000
+                        },
+                        "source": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "label": {
+                          "type": "string",
+                          "maxLength": 200
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "mode",
+                        "duration_minutes",
+                        "source"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "needs_review": {
+                  "type": "boolean"
+                },
+                "review_reason": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "verifications": {
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "event_id": {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "source_key": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed",
+                    "changed",
+                    "source_missing",
+                    "check_failed"
+                  ]
+                },
+                "checked_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "description": "ISO 8601 instant with offset, e.g. 2026-11-22T09:00:00Z"
+                },
+                "note": {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                "source_url": {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "format": "uri"
+                }
+              },
+              "required": [
+                "outcome"
+              ]
+            }
+          }
+        }
+      },
+      "RunCreate": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "discovery",
+              "verification",
+              "adhoc"
+            ]
+          },
+          "executor": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "params": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "RunComplete": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "default": "success",
+            "type": "string",
+            "enum": [
+              "success",
+              "partial"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "coverage": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "area": {
+                  "type": "string",
+                  "enum": [
+                    "bratislava",
+                    "vienna",
+                    "budapest",
+                    "prague",
+                    "europe-artists",
+                    "festivals-nearby",
+                    "festivals-europe",
+                    "ibiza"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "discovery",
+                    "verification"
+                  ]
+                },
+                "checked_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "description": "ISO 8601 instant with offset, e.g. 2026-11-22T09:00:00Z"
+                },
+                "items_checked": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "note": {
+                  "type": "string",
+                  "maxLength": 500
+                }
+              },
+              "required": [
+                "area",
+                "kind"
+              ]
+            }
+          },
+          "stats": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "errors": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "item_ref": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "message"
+              ]
+            }
+          }
+        }
+      },
+      "RunFail": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "coverage": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "area": {
+                  "type": "string",
+                  "enum": [
+                    "bratislava",
+                    "vienna",
+                    "budapest",
+                    "prague",
+                    "europe-artists",
+                    "festivals-nearby",
+                    "festivals-europe",
+                    "ibiza"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "discovery",
+                    "verification"
+                  ]
+                },
+                "checked_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "description": "ISO 8601 instant with offset, e.g. 2026-11-22T09:00:00Z"
+                },
+                "items_checked": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "note": {
+                  "type": "string",
+                  "maxLength": 500
+                }
+              },
+              "required": [
+                "area",
+                "kind"
+              ]
+            }
+          },
+          "errors": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "item_ref": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "message"
+              ]
+            }
+          }
+        },
+        "required": [
+          "error"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ],
+  "paths": {
+    "/ping": {
+      "post": {
+        "operationId": "ping",
+        "summary": "Authenticated connection test (records a completed connection-test run)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "executor": {
+                    "type": "string"
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/context": {
+      "get": {
+        "operationId": "getContext",
+        "summary": "Active watchlist, interests, geographic scopes, coverage and research rules — read at the start of every run",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/watchlist": {
+      "get": {
+        "operationId": "getWatchlist",
+        "summary": "Full watchlist with aliases, identifying links and keys",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/taxonomy": {
+      "get": {
+        "operationId": "getTaxonomy",
+        "summary": "Valid category and genre slugs",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "operationId": "listEvents",
+        "summary": "List researched events (to find existing ids and source keys)",
+        "parameters": [
+          {
+            "name": "updated_since",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "upcoming",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/{id}": {
+      "get": {
+        "operationId": "getEvent",
+        "summary": "Full facts for one event",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verification-queue": {
+      "get": {
+        "operationId": "getVerificationQueue",
+        "summary": "Upcoming listings to recheck, prioritised (booked, soon, sale dates approaching, stale), in batches",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs": {
+      "post": {
+        "operationId": "startRun",
+        "summary": "Start a run (status running) when your own scheduler triggers research",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/claim": {
+      "post": {
+        "operationId": "claimRun",
+        "summary": "Claim the oldest queued run (Search now / internal schedule). 204 when none is queued.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "executor": {
+                    "type": "string"
+                  },
+                  "types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Nothing queued"
+          }
+        }
+      }
+    },
+    "/runs/{id}": {
+      "get": {
+        "operationId": "getRun",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Run status and recorded errors",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{id}/heartbeat": {
+      "post": {
+        "operationId": "heartbeatRun",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Extend the run lease while working",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{id}/complete": {
+      "post": {
+        "operationId": "completeRun",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Finish a run with outcome, coverage and summary",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunComplete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{id}/fail": {
+      "post": {
+        "operationId": "failRun",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Record a failed run (existing listings are kept)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunFail"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/import": {
+      "post": {
+        "operationId": "importData",
+        "summary": "Create or update events, artists, festivals, residencies and verification outcomes (idempotent)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency key reused with a different payload, or run not running"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    }
+  }
+}

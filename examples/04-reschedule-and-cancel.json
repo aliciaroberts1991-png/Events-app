@@ -1,0 +1,19 @@
+{
+  "events": [
+    {
+      "source_keys": ["ra:event:9990001"],
+      "status": "rescheduled",
+      "status_note": "Moved by the promoter; existing tickets remain valid.",
+      "start": "2026-12-12T22:00",
+      "end": "05:00",
+      "sources": [{ "url": "https://example.org/club/news/rollers-moved", "type": "venue", "claims": ["date"] }],
+      "verified_at": "2026-11-30T09:00:00Z"
+    },
+    {
+      "source_keys": ["tm:event:example-arena-2027"],
+      "status": "cancelled",
+      "status_note": "Tour cancelled; refunds through the original ticket seller.",
+      "sources": [{ "url": "https://example.org/band/news", "type": "official_artist", "claims": ["status"] }]
+    }
+  ]
+}

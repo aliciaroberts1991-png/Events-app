@@ -1,0 +1,20 @@
+# Render.com blueprint example (a persistent disk needs a paid instance type).
+services:
+  - type: web
+    name: quartet
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    disk:
+      name: quartet-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:/data/quartet.db
+      - key: OWNER_EMAIL
+        sync: false
+      - key: OWNER_PASSWORD
+        sync: false
+      - key: PUBLIC_URL
+        sync: false

@@ -1,0 +1,15 @@
+{
+  "outcome": "success",
+  "summary": "Daily discovery: checked four cities, followed artists across Europe, European festivals and Ibiza.",
+  "coverage": [
+    { "area": "bratislava", "kind": "discovery", "items_checked": 42 },
+    { "area": "vienna", "kind": "discovery", "items_checked": 61 },
+    { "area": "budapest", "kind": "discovery", "items_checked": 38 },
+    { "area": "prague", "kind": "discovery", "items_checked": 44 },
+    { "area": "europe-artists", "kind": "discovery", "note": "5 active artists" },
+    { "area": "festivals-nearby", "kind": "discovery" },
+    { "area": "festivals-europe", "kind": "discovery" },
+    { "area": "ibiza", "kind": "discovery", "note": "2027 season announcements" }
+  ],
+  "stats": { "sources_checked": 120 }
+}

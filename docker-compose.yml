@@ -1,0 +1,29 @@
+# Local or single-server deployment.
+#   docker compose up -d                      # SQLite in the "quartet-data" volume
+#   docker compose --profile postgres up -d   # adds PostgreSQL; set DATABASE_URL below
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite:/data/quartet.db}
+    volumes:
+      - quartet-data:/data
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: quartet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: quartet
+    volumes:
+      - quartet-pg:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  quartet-data:
+  quartet-pg:

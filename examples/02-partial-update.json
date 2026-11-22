@@ -1,0 +1,11 @@
+{
+  "events": [
+    {
+      "source_keys": ["tm:event:example-arena-2027"],
+      "tickets": { "price_min": 59, "price_max": 129, "currency": "EUR", "booking_fee_note": null },
+      "unverified_fields": null,
+      "sources": [{ "url": "https://example.org/tickets/arena", "type": "ticketing", "claims": ["price"] }],
+      "verified_at": "2026-11-29T08:00:00Z"
+    }
+  ]
+}

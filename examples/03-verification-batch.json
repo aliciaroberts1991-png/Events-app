@@ -1,0 +1,8 @@
+{
+  "idempotency_key": "verification-2026-W48-batch-1",
+  "verifications": [
+    { "source_key": "ra:event:9990001", "outcome": "confirmed", "checked_at": "2026-11-23T07:00:00Z", "source_url": "https://example.org/club/events/rollers" },
+    { "source_key": "festival:example-fest:2027", "outcome": "source_missing", "note": "Lineup page returns 404; festival homepage still lists the dates.", "source_url": "https://example.org/fest/lineup" },
+    { "source_key": "tm:event:example-arena-2027", "outcome": "check_failed", "note": "Ticket site timed out twice." }
+  ]
+}

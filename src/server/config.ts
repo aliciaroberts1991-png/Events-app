@@ -1,4 +1,5 @@
 // Runtime configuration from environment variables. See .env.example.
+import fs from 'node:fs';
 import path from 'node:path';
 
 function bool(v: string | undefined, dflt = false) {
@@ -28,7 +29,17 @@ export interface Config {
   allowLinkExtraction: boolean;
 }
 
+let envFileLoaded = false;
+/** Reads ./.env once if present. Variables already set in the environment win. */
+function loadEnvFile() {
+  if (envFileLoaded || process.env.VITEST) return;
+  envFileLoaded = true;
+  const file = path.resolve('.env');
+  if (fs.existsSync(file)) process.loadEnvFile(file);
+}
+
 export function loadConfig(overrides: Partial<Config> = {}): Config {
+  loadEnvFile();
   const e = process.env;
   const env = e.NODE_ENV ?? 'development';
   const smtpUrl =

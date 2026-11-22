@@ -1,0 +1,28 @@
+{
+  "events": [
+    {
+      "source_keys": ["market:example-farmers:2027"],
+      "kind": "recurring",
+      "title": "Example Farmers’ Market",
+      "timezone": "Europe/Vienna",
+      "recurrence": { "freq": "weekly", "byweekday": ["SA"], "from": "2027-03-06", "until": "2027-11-27", "start_time": "08:00", "end_time": "13:00", "exceptions": ["2027-05-01"], "extra_dates": ["2027-04-30"] },
+      "venue": { "name": "Example Square", "city": "Vienna", "country": "AT", "lat": 48.199, "lng": 16.364 },
+      "categories": ["farmers-market"],
+      "tickets": { "status": "free" },
+      "languages": ["de"],
+      "language_importance": "none",
+      "sources": [{ "url": "https://example.org/markets/farmers", "type": "listing" }]
+    },
+    {
+      "source_keys": ["market:example-christmas:2026"],
+      "kind": "recurring",
+      "title": "Example Christmas Market",
+      "timezone": "Europe/Prague",
+      "recurrence": { "freq": "daily", "from": "2026-11-28", "until": "2027-01-06", "start_time": "10:00", "end_time": "22:00", "exceptions": ["2026-12-24"] },
+      "venue": { "name": "Example Old Town Square", "city": "Prague", "country": "CZ", "lat": 50.087, "lng": 14.421 },
+      "categories": ["christmas-market", "food-market"],
+      "tickets": { "status": "free" },
+      "sources": [{ "url": "https://example.org/markets/christmas", "type": "listing" }]
+    }
+  ]
+}

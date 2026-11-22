@@ -1,0 +1,107 @@
+{
+  "idempotency_key": "discovery-2026-11-23-batch-1",
+  "artists": [
+    {
+      "name": "Example Rollers",
+      "keys": ["ra:artist:example-rollers"],
+      "aliases": ["The Example Rollers"],
+      "genres": ["liquid-dnb", "dancefloor-dnb"],
+      "description": "Bristol duo playing melodic, dancefloor-friendly liquid drum and bass with live vocals.",
+      "description_source": "https://example.org/artists/example-rollers",
+      "links": { "official": "https://example.org/artists/example-rollers", "resident_advisor": "https://example.org/ra/example-rollers" },
+      "country": "GB"
+    }
+  ],
+  "events": [
+    {
+      "ref": "bratislava-dnb-2026-12-05",
+      "source_keys": ["ra:event:9990001"],
+      "title": "Example Rollers all night",
+      "start": "2026-12-05T22:00",
+      "end": "05:00",
+      "doors": "22:00",
+      "timezone": "Europe/Bratislava",
+      "venue": { "key": "ra:venue:example-club", "name": "Example Club", "address": "Riverside 1", "city": "Bratislava", "country": "SK", "lat": 48.141, "lng": 17.115 },
+      "categories": ["dnb"],
+      "genres": ["liquid-dnb"],
+      "lineup": [
+        { "artist_key": "ra:artist:example-rollers", "billing": "headliner", "format": "live", "set_start": "00:30", "set_end": "02:00" },
+        { "name": "Local Support DJ", "billing": "support", "format": "dj_set" }
+      ],
+      "expectation": "Mid-sized club, busiest after midnight; liquid and rollers rather than heavy neurofunk.",
+      "why_suits_me": "Melodic liquid drum and bass from a live act, 10 minutes from home.",
+      "age_restriction": "18+",
+      "languages": ["none"],
+      "language_importance": "none",
+      "tickets": {
+        "url": "https://example.org/tickets/9990001",
+        "price_min": 18,
+        "price_max": 25,
+        "currency": "EUR",
+        "booking_fee_note": "€1.50 per ticket",
+        "status": "available",
+        "status_checked_at": "2026-11-23T06:10:00Z",
+        "tiers": [
+          { "name": "Early bird", "price": 18, "currency": "EUR", "status": "sold_out" },
+          { "name": "Standard", "price": 25, "currency": "EUR", "status": "available" }
+        ]
+      },
+      "prominence": 55,
+      "highlight": true,
+      "announced_at": "2026-11-20T12:00:00Z",
+      "sources": [
+        { "url": "https://example.org/club/events/rollers", "type": "venue", "name": "Example Club", "claims": ["date", "lineup", "times"] },
+        { "url": "https://example.org/tickets/9990001", "type": "ticketing", "name": "Example Tickets", "key": "ra:event:9990001", "claims": ["price", "ticket_status"] }
+      ],
+      "verified_at": "2026-11-23T06:10:00Z"
+    },
+    {
+      "ref": "vienna-concert",
+      "source_keys": ["tm:event:example-arena-2027"],
+      "title": "Example Band — European arena tour",
+      "start": "2027-03-14T20:00",
+      "doors": "18:30",
+      "timezone": "Europe/Vienna",
+      "venue": { "name": "Example Arena", "city": "Vienna", "country": "AT", "lat": 48.2, "lng": 16.42 },
+      "categories": ["concert", "rock"],
+      "genres": ["indie"],
+      "lineup": [{ "name": "Example Band", "billing": "headliner", "format": "live" }],
+      "tickets": { "status": "sale_not_started", "presale_at": "2026-11-28T10:00", "onsale_at": "2026-11-30T10:00", "sale_timezone": "Europe/Vienna", "url": "https://example.org/tickets/arena" },
+      "prominence": 85,
+      "unverified_fields": ["price"],
+      "sources": [{ "url": "https://example.org/band/tour", "type": "official_artist", "claims": ["date", "venue", "sale_dates"] }]
+    },
+    {
+      "ref": "festival-edition",
+      "kind": "festival",
+      "source_keys": ["festival:example-fest:2027"],
+      "title": "Example Fest 2027",
+      "festival": { "name": "Example Fest", "edition": "2027", "series_key": "festival:example-fest", "website": "https://example.org/fest" },
+      "start": "2027-07-09",
+      "end": "2027-07-11",
+      "timezone": "Europe/Budapest",
+      "venue": { "name": "Example Island", "city": "Budapest", "country": "HU", "lat": 47.55, "lng": 19.05 },
+      "categories": ["music-festival", "techno", "house"],
+      "genres": ["melodic-techno", "afro-house"],
+      "lineup": [
+        { "name": "Example Rollers", "billing": "headliner", "format": "live", "date": "2027-07-10", "stage": "Main stage" },
+        { "name": "Another Example DJ", "billing": "headliner", "format": "dj_set", "date": "2027-07-11" }
+      ],
+      "tickets": {
+        "price_min": 45,
+        "price_max": 129,
+        "currency": "EUR",
+        "status": "available",
+        "tiers": [
+          { "name": "3-day pass", "price": 129, "currency": "EUR" },
+          { "name": "Day ticket", "price": 45, "currency": "EUR", "day": "2027-07-10" }
+        ]
+      },
+      "camping": { "available": true, "note": "Camping tickets sold separately", "url": "https://example.org/fest/camping" },
+      "accommodation": { "url": "https://example.org/fest/stay" },
+      "tba_fields": ["set_times"],
+      "prominence": 75,
+      "sources": [{ "url": "https://example.org/fest/lineup", "type": "festival", "claims": ["lineup", "dates"] }]
+    }
+  ]
+}

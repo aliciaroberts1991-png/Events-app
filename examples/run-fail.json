@@ -1,0 +1,5 @@
+{
+  "error": "Search tool unavailable for most of the run.",
+  "coverage": [{ "area": "bratislava", "kind": "discovery" }],
+  "errors": [{ "item_ref": "vienna", "message": "Listing site blocked automated access" }]
+}
