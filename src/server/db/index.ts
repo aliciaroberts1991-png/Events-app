@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Database } from './types';
 import * as m0001 from './migrations/0001_initial';
+import * as m0002 from './migrations/0002_device_local_personal_data';
 
 export type DB = Kysely<Database>;
 export type Dialect = 'sqlite' | 'postgres';
@@ -11,6 +12,7 @@ export type Dialect = 'sqlite' | 'postgres';
 /** Migrations are bundled statically so they ship inside the server build. */
 const MIGRATIONS: Record<string, Migration> = {
   '0001_initial': m0001,
+  '0002_device_local_personal_data': m0002,
 };
 
 class StaticProvider implements MigrationProvider {

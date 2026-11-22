@@ -20,7 +20,6 @@ export async function artistsOverview(ctx: AppContext, userId: string) {
         .select(['ea.artist_id', 'e.id as event_id'])
         .where('ea.artist_id', 'in', ids)
         .where('e.span_end_utc', '>=', nowIso)
-        .where((w) => w.or([w('e.owner_user_id', 'is', null), w('e.owner_user_id', '=', userId)]))
         .execute()
     : [];
   const eventIds = [...new Set(appearances.map((a) => a.event_id))];
@@ -40,7 +39,7 @@ export async function artistsOverview(ctx: AppContext, userId: string) {
     const evs = appearances
       .filter((a) => a.artist_id === w.artist_id)
       .map((a) => events.get(a.event_id)!)
-      .filter((e) => e && !e.state.hidden)
+      .filter((e) => !!e)
       .sort((a, b) => (a.next_occurrence?.start_utc ?? a.start_utc).localeCompare(b.next_occurrence?.start_utc ?? b.start_utc));
     return { ...w, appearances: evs, residencies: residencies.filter((r) => r.artist_id === w.artist_id) };
   });
@@ -52,7 +51,7 @@ export async function artistDetail(ctx: AppContext, userId: string, id: string) 
   const [keys, watch, upcoming, residencies] = await Promise.all([
     ctx.db.selectFrom('artist_keys').select('key').where('artist_id', '=', id).execute(),
     ctx.db.selectFrom('watchlist').selectAll().where('artist_id', '=', id).where('user_id', '=', userId).executeTakeFirst(),
-    listEvents(ctx, userId, { scope: 'any', artistId: id, mode: 'all', limit: 200, includeHidden: true }),
+    listEvents(ctx, userId, { scope: 'any', artistId: id, mode: 'all', limit: 200 }),
     ctx.db
       .selectFrom('residency_artists as ra')
       .innerJoin('residencies as r', 'r.id', 'ra.residency_id')
@@ -107,7 +106,7 @@ export async function ibiza(ctx: AppContext, userId: string, season: number, sta
     : [];
   const from = `${season}-01-01`;
   const to = `${season}-12-31`;
-  const parties = await listEvents(ctx, userId, { scope: 'ibiza', range: 'custom', from, to, mode: 'all', limit: 500, includePast: true, includeHidden: false });
+  const parties = await listEvents(ctx, userId, { scope: 'ibiza', range: 'custom', from, to, mode: 'all', limit: 500, includePast: true });
   const stayParties = stay
     ? (await listEvents(ctx, userId, { scope: 'ibiza', range: 'custom', from: stay.from, to: stay.to, mode: 'all', limit: 500, includePast: true })).items
     : null;

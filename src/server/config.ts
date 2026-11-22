@@ -17,7 +17,8 @@ export interface Config {
   sessionDays: number;
   cookieSecure: boolean;
   ownerEmail: string | null;
-  ownerPassword: string | null;
+  /** Passphrase that unlocks editing of central data (artist list, settings, imports). */
+  editorPassword: string | null;
   researchWebhookUrl: string | null;
   researchWebhookSecret: string | null;
   runLeaseMinutes: number;
@@ -57,7 +58,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     sessionDays: Number(e.SESSION_DAYS ?? 90),
     cookieSecure: bool(e.COOKIE_SECURE, env === 'production'),
     ownerEmail: e.OWNER_EMAIL || null,
-    ownerPassword: e.OWNER_PASSWORD || null,
+    editorPassword: e.EDITOR_PASSWORD || e.OWNER_PASSWORD || null,
     researchWebhookUrl: e.RESEARCH_WEBHOOK_URL || null,
     researchWebhookSecret: e.RESEARCH_WEBHOOK_SECRET || null,
     runLeaseMinutes: Number(e.RUN_LEASE_MINUTES ?? 45),

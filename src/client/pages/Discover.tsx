@@ -6,7 +6,7 @@ import { DEFAULT_FILTERS, FilterBar, filtersToQuery, ModeToggle, type FilterStat
 import { Empty, ErrorNote, PageHeader, Spinner } from '../components/ui';
 import { get, qs } from '../lib/api';
 import { relative } from '../lib/format';
-import { useMeta, useStatus, useUrlState } from '../lib/hooks';
+import { useDeviceView, useMeta, useStatus, useUrlState } from '../lib/hooks';
 import type { ListResult } from '../lib/types';
 
 export function Coverage({ areas }: { areas: string[] }) {
@@ -39,10 +39,11 @@ export function DiscoverPage() {
   const [f, set] = useUrlState<FilterState>(DEFAULT_FILTERS);
   const meta = useMeta();
   const q = useEventQuery(f);
+  const view = useDeviceView(q.data?.items, f.mode, q.data?.counts);
   const hubs = meta.data?.hubs ?? [];
   return (
     <div className="page">
-      <PageHeader title="Discover" sub="Events across Bratislava, Vienna, Budapest and Prague — and wherever you choose." actions={<ModeToggle value={f.mode} onChange={(v) => set({ mode: v })} counts={q.data?.counts} />} />
+      <PageHeader title="Discover" sub="Events across Bratislava, Vienna, Budapest and Prague — and wherever you choose." actions={<ModeToggle value={f.mode} onChange={(v) => set({ mode: v })} counts={view.counts} />} />
       <FilterBar f={f} set={set} hubs={hubs} rangeLabel={q.data?.range.label} />
       <Coverage areas={f.loc === 'all4' ? ['bratislava', 'vienna', 'budapest', 'prague'] : [f.loc === 'europe' ? 'europe-artists' : f.loc]} />
       <ErrorNote error={q.error} />
@@ -50,7 +51,7 @@ export function DiscoverPage() {
         <Spinner />
       ) : (
         <EventList
-          items={q.data?.items ?? []}
+          items={view.visible}
           rangeStart={q.data?.range.fromDate}
           empty={
             <Empty title={f.mode === 'highlights' && (q.data?.counts.all ?? 0) > 0 ? 'No highlights match these filters' : 'Nothing matches these filters yet'} icon={<Compass size={28} />}>
@@ -66,6 +67,11 @@ export function DiscoverPage() {
             </Empty>
           }
         />
+      )}
+      {view.hiddenCount > 0 && (
+        <p className="muted center small">
+          {view.hiddenCount} hidden on this device · <Link to="/plans?tab=hidden">Show hidden</Link>
+        </p>
       )}
       {q.data && q.data.total > q.data.items.length && <p className="muted center">Showing the first {q.data.items.length} of {q.data.total}. Narrow the filters to see more.</p>}
     </div>

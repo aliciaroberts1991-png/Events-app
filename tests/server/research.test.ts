@@ -102,11 +102,9 @@ describe('imports', () => {
     expect(ev.price_min).toBe(25);
   });
 
-  it('merges lineups and records a reschedule with the previous date, keeping bookings attached', async () => {
+  it('merges lineups and records a reschedule with the previous date, keeping the same id', async () => {
     const r = await env.research('POST', '/import', samplePayload());
     const id = findRef(r.body, 'dnb-bratislava').id;
-    await env.api('POST', `/api/events/${id}/bookings`, { provider: 'Ticketportal', amount: 20, currency: 'EUR', reference: 'ABC123' });
-    await env.api('PUT', `/api/events/${id}/state`, { notes: 'Meet at 23:00' });
 
     const res = await env.research('POST', '/import', {
       events: [{ source_keys: ['test:evt:dnb-1'], start: '2026-12-05T22:00', end: '05:00', status: 'rescheduled', lineup: [{ name: 'Sub Focus Test', billing: 'special_guest', format: 'dj_set' }] }],
@@ -116,9 +114,7 @@ describe('imports', () => {
     expect(d.start_local).toBe('2026-12-05T22:00');
     expect(d.previous_schedule[0].start_local).toBe('2026-11-28T22:00');
     expect(d.artists.map((a: any) => a.name)).toEqual(expect.arrayContaining(['Chase & Status', 'Sub Focus Test']));
-    expect(d.bookings).toHaveLength(1);
-    expect(d.state.plan_status).toBe('booked');
-    expect(d.state.notes).toBe('Meet at 23:00');
+    expect(d.id).toBe(id); // device-held bookings and notes keep pointing at this id
     const feed = (await env.api('GET', '/api/feed')).body.items.map((i: any) => i.type);
     expect(feed).toEqual(expect.arrayContaining(['date_change']));
   });
@@ -136,6 +132,7 @@ describe('imports', () => {
 
   it('never lets research modify owner-entered events', async () => {
     const created = await env.api('POST', '/api/events', { title: 'My own gig', start: '2026-12-10T20:00', timezone: 'Europe/Bratislava', venue: { name: 'Somewhere', city: 'Bratislava', country: 'SK' } });
+    expect(created.status).toBe(200);
     const res = await env.research('POST', '/import', { events: [{ id: created.body.id, title: 'Hijacked' }] });
     expect(res.body.items[0].status).toBe('error');
     const d = (await env.api('GET', `/api/events/${created.body.id}`)).body;
@@ -248,20 +245,19 @@ describe('runs and the job queue', () => {
   it('prioritises booked, soon and on-sale events in the verification queue', async () => {
     const r = await env.research('POST', '/import', samplePayload());
     const fest = findRef(r.body, 'festival').id;
-    await env.api('PUT', `/api/events/${fest}/state`, { plan_status: 'booked' });
+    await env.api('PUT', '/api/priority-events', { device_id: 'phone-12345678', events: { [fest]: 'booked' } });
     const q = await env.research('GET', '/verification-queue?limit=3');
     expect(q.body.total).toBe(7);
     expect(q.body.items[0].event.id).toBe(fest);
     expect(q.body.items[0].reasons).toContain('booked');
     expect(q.body.next_offset).toBe(3);
-    expect(JSON.stringify(q.body)).not.toContain('plan_status');
+    expect(JSON.stringify(q.body)).not.toContain('phone-12345678');
   });
 });
 
-describe('preservation across refreshes and restarts', () => {
-  it('keeps personal data after re-imports, demo refresh and a restart on the same database', async () => {
+describe('preservation across refreshes, restarts and migrations', () => {
+  it('keeps the central artist list, settings and editor sessions after re-imports and a restart', async () => {
     if (process.env.TEST_DATABASE !== 'postgres') {
-      // Use a file database so the "restart" really reopens storage.
       await env.close();
       const fs = await import('node:fs');
       const os = await import('node:os');
@@ -269,28 +265,57 @@ describe('preservation across refreshes and restarts', () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quartet-'));
       env = await setup({ dbUrl: `sqlite:${path.join(dir, sampleSlug())}.db` });
     }
-    const r = await env.research('POST', '/import', samplePayload());
-    const id = findRef(r.body, 'dnb-bratislava').id;
-    await env.api('PUT', `/api/events/${id}/state`, { favourite: true, plan_status: 'going', notes: 'Bring earplugs' });
-    await env.api('POST', '/api/plans', { title: 'Dinner', start: '2026-11-28T19:00', end: '2026-11-28T21:00' });
+    await env.research('POST', '/import', samplePayload());
+    await env.api('POST', '/api/watchlist', { name: 'Kept Artist', aliases: ['KA'] });
+    const chase = (await env.anon('GET', '/api/watchlist')).body.artists.find((a: any) => a.name === 'Chase & Status');
+    await env.api('PUT', `/api/watchlist/${chase.id}`, { status: 'paused' });
+    const prefs = (await env.api('GET', '/api/preferences/full')).body;
+    prefs.data.nearbyRadiusKm = 25;
+    await env.api('PUT', '/api/preferences', { data: prefs.data, version: prefs.version });
     await env.research('POST', '/import', samplePayload());
     await env.research('POST', '/import', { events: [{ source_keys: ['test:evt:dnb-1'], description: 'Updated description' }] });
+    const cookie = env.cookie;
 
     const dbUrl = env.dbUrl;
     await env.close();
-    const restarted = await buildApp({ databaseUrl: dbUrl, cookieSecure: false }, { now: () => new Date('2026-11-22T09:00:00Z') });
+    const restarted = await buildApp({ databaseUrl: dbUrl, cookieSecure: false, editorPassword: 'correct horse battery' }, { now: () => new Date('2026-11-22T09:00:00Z') });
     try {
-      const st = await restarted.ctx.db.selectFrom('user_event_state').selectAll().where('event_id', '=', id).executeTakeFirstOrThrow();
-      expect(st.notes).toBe('Bring earplugs');
-      expect(st.plan_status).toBe('going');
-      expect(st.favourite).toBe(1);
-      const plans = await restarted.ctx.db.selectFrom('personal_plans').selectAll().execute();
-      expect(plans).toHaveLength(1);
-      const watch = await restarted.ctx.db.selectFrom('watchlist').selectAll().execute();
-      expect(watch).toHaveLength(5); // seed is not re-applied on restart
+      const watch = await restarted.app.inject({ method: 'GET', url: '/api/watchlist' });
+      const names = JSON.parse(watch.body).artists.map((a: any) => `${a.name}:${a.status}`);
+      expect(names).toEqual(expect.arrayContaining(['Kept Artist:active', 'Chase & Status:paused']));
+      expect(names).toHaveLength(6); // starting list is not re-seeded on restart
+      const p = JSON.parse((await restarted.app.inject({ method: 'GET', url: '/api/preferences' })).body);
+      expect(p.data.nearbyRadiusKm).toBe(25);
+      const state = JSON.parse((await restarted.app.inject({ method: 'GET', url: '/api/auth/state', headers: { cookie } })).body);
+      expect(state.editor).toBe(true); // the device stays unlocked
+      const migrations = await restarted.ctx.db.selectFrom('kysely_migration' as never).selectAll().execute();
+      expect(migrations.map((m: any) => m.name)).toEqual(['0001_initial', '0002_device_local_personal_data']);
     } finally {
       await restarted.close();
       env = await setup();
+    }
+  });
+
+  it('migration 0002 keeps any rows from the earlier server-side personal tables', async () => {
+    const { openDatabase } = await import('../../src/server/db');
+    const { Migrator } = await import('kysely/migration');
+    const m1 = await import('../../src/server/db/migrations/0001_initial');
+    const m2 = await import('../../src/server/db/migrations/0002_device_local_personal_data');
+    const url = process.env.TEST_DATABASE === 'postgres' ? (await import('./helpers')).freshDatabaseUrl() : Promise.resolve('sqlite::memory:');
+    const h = await openDatabase(await url);
+    try {
+      const provider = (names: string[]) => ({ getMigrations: async () => Object.fromEntries(names.map((n) => [n, n === '0001_initial' ? m1 : m2])) });
+      await new Migrator({ db: h.db, provider: provider(['0001_initial']) }).migrateToLatest();
+      const t = new Date().toISOString();
+      const db = h.db as any;
+      await db.insertInto('users').values({ id: 'usr_1', email: 'a@b', display_name: null, password_hash: '', created_at: t, updated_at: t }).execute();
+      await db.insertInto('personal_plans').values({ id: 'pln_1', user_id: 'usr_1', title: 'Old plan', start_local: '2026-12-01', end_local: null, timezone: 'Europe/Bratislava', start_utc: t, end_utc: t, start_time_known: 0, end_time_known: 0, location: null, notes: null, created_at: t, updated_at: t }).execute();
+      const r = await new Migrator({ db: h.db, provider: provider(['0001_initial', '0002_device_local_personal_data']) }).migrateToLatest();
+      expect(r.error).toBeUndefined();
+      const rows = await db.selectFrom('legacy_personal_plans').selectAll().execute();
+      expect(rows[0].title).toBe('Old plan');
+    } finally {
+      await h.close();
     }
   });
 });

@@ -7,7 +7,7 @@ import { ZodError } from 'zod';
 import { loadConfig, type Config } from './config';
 import type { AppContext } from './context';
 import { migrateToLatest, openDatabase, pingDatabase } from './db';
-import { ensureOwnerFromEnv } from './auth';
+import { applyEditorPasswordFromEnv, siteId } from './auth';
 import { apiRoutes } from './routes/api';
 import { researchRoutes } from './routes/research';
 import { seedWatchlist, loadDemo, demoStatus } from './services/seed';
@@ -25,9 +25,10 @@ export async function buildApp(overrides: Partial<Config> = {}, opts: { now?: ()
   await migrateToLatest(handle.db);
   const ctx: AppContext = { db: handle.db, dialect: handle.dialect, config, now: opts.now ?? (() => new Date()), sqlitePath: handle.sqlitePath };
 
-  const ownerId = await ensureOwnerFromEnv(ctx);
-  const owner = ownerId ?? (await ctx.db.selectFrom('users').select('id').orderBy('created_at').executeTakeFirst())?.id;
-  if (owner) await seedWatchlist(ctx, owner);
+  // One central "site" record owns the followed-artist list and shared settings.
+  const site = await siteId(ctx);
+  await applyEditorPasswordFromEnv(ctx);
+  await seedWatchlist(ctx, site);
   if (config.seedDemo && !(await demoStatus(ctx)).loaded) await loadDemo(ctx);
 
   const app = Fastify({

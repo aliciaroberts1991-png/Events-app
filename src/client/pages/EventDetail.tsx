@@ -15,7 +15,7 @@ import {
   Ticket,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   LANGUAGE_IMPORTANCE_LABELS,
@@ -27,7 +27,11 @@ import {
 } from '../../shared/taxonomy';
 import { StatusBadges } from '../components/EventCard';
 import { Badge, Dialog, ErrorNote, Field, Spinner } from '../components/ui';
-import { api, download, errorMessage, get } from '../lib/api';
+import { buildIcs } from '../../shared/calendar';
+import type { LocalBooking } from '../../shared/local-data';
+import { api, get } from '../lib/api';
+import { addFeedback, deleteBooking, saveBooking, snapshotOf, type Snapshot } from '../lib/local';
+import { downloadText } from '../lib/plans';
 import {
   catLabel,
   countryName,
@@ -44,8 +48,8 @@ import {
   whenWithZone,
   zoneAbbr,
 } from '../lib/format';
-import { useEventState, useToast } from '../lib/hooks';
-import type { Booking, EventDetail } from '../lib/types';
+import { useEditor, useEventState, useToast } from '../lib/hooks';
+import type { EventDetail } from '../lib/types';
 
 const TBA = () => <span className="tba">To be announced</span>;
 const Unverified = ({ title }: { title?: string }) => (
@@ -63,7 +67,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function BookingForm({ eventId, initial, onDone }: { eventId: string; initial?: Booking; onDone: () => void }) {
+function BookingForm({ target, initial, onDone, snapshot }: { target: string; initial?: LocalBooking; onDone: () => void; snapshot?: Snapshot }) {
   const toast = useToast();
   const [v, setV] = useState({
     provider: initial?.provider ?? '',
@@ -75,31 +79,30 @@ function BookingForm({ eventId, initial, onDone }: { eventId: string; initial?: 
     link: initial?.links?.[0] ?? '',
     notes: initial?.notes ?? '',
   });
-  const [err, setErr] = useState<string | null>(null);
   const upd = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV({ ...v, [k]: e.target.value });
   return (
     <form
       className="form"
-      onSubmit={async (e) => {
+      onSubmit={(e) => {
         e.preventDefault();
-        const body = {
-          provider: v.provider || null,
-          amount: v.amount ? Number(v.amount) : null,
-          currency: v.currency || null,
-          reference: v.reference || null,
-          quantity: v.quantity ? Number(v.quantity) : null,
-          ticket_type: v.ticket_type || null,
-          links: v.link ? [v.link] : [],
-          notes: v.notes || null,
-        };
-        try {
-          if (initial) await api('PUT', `/api/bookings/${initial.id}`, body);
-          else await api('POST', `/api/events/${eventId}/bookings`, body);
-          toast('Booking saved');
-          onDone();
-        } catch (x) {
-          setErr(errorMessage(x));
-        }
+        saveBooking(
+          {
+            id: initial?.id,
+            target,
+            provider: v.provider || null,
+            amount: v.amount ? Number(v.amount) : null,
+            currency: v.currency || null,
+            reference: v.reference || null,
+            quantity: v.quantity ? Number(v.quantity) : null,
+            ticket_type: v.ticket_type || null,
+            links: v.link ? [v.link] : [],
+            notes: v.notes || null,
+          },
+          !initial,
+          snapshot,
+        );
+        toast('Booking saved on this device');
+        onDone();
       }}
     >
       <div className="form-row">
@@ -134,7 +137,7 @@ function BookingForm({ eventId, initial, onDone }: { eventId: string; initial?: 
       <Field label="Notes">
         <input value={v.notes} onChange={upd('notes')} />
       </Field>
-      {err && <p className="error-note" role="alert">{err}</p>}
+      <p className="muted small">Stored only on this device. Use Settings → This device to back it up.</p>
       <div className="dialog-actions">
         <button className="btn btn-primary">Save booking</button>
       </div>
@@ -142,37 +145,33 @@ function BookingForm({ eventId, initial, onDone }: { eventId: string; initial?: 
   );
 }
 
-function Notes({ e }: { e: EventDetail }) {
-  const [text, setText] = useState(e.state.notes ?? '');
-  const [saved, setSaved] = useState<'idle' | 'saving' | 'saved' | 'conflict'>('idle');
-  const version = useRef(e.state.version);
-  const qc = useQueryClient();
-  useEffect(() => {
-    version.current = e.state.version;
-    if (saved !== 'saving') setText(e.state.notes ?? '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [e.state.version]);
-  const save = async () => {
-    if ((e.state.notes ?? '') === text) return;
-    setSaved('saving');
-    try {
-      const r = await api('PUT', `/api/events/${e.id}/state`, { notes: text, version: version.current });
-      version.current = r.state.version;
-      setSaved('saved');
-      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'meta' });
-    } catch (err: any) {
-      if (err.status === 409) setSaved('conflict');
-      else setSaved('idle');
-    }
-  };
+export function NotesBox({ value, onSave }: { value: string | null; onSave: (v: string) => void }) {
+  const [text, setText] = useState(value ?? '');
+  const [saved, setSaved] = useState(false);
+  useEffect(() => setText(value ?? ''), [value]);
   return (
     <div className="notes">
       <label htmlFor="notes" className="field-label">
         Private notes
       </label>
-      <textarea id="notes" rows={4} value={text} onChange={(x) => setText(x.target.value)} onBlur={save} placeholder="Who’s coming, meeting point, what to bring…" />
+      <textarea
+        id="notes"
+        rows={3}
+        value={text}
+        onChange={(x) => {
+          setText(x.target.value);
+          setSaved(false);
+        }}
+        onBlur={() => {
+          if ((value ?? '') !== text) {
+            onSave(text);
+            setSaved(true);
+          }
+        }}
+        placeholder="Who’s coming, meeting point, what to bring…"
+      />
       <p className="muted small" aria-live="polite">
-        {saved === 'saving' ? 'Saving…' : saved === 'saved' ? 'Saved' : saved === 'conflict' ? 'Changed on another device — reload to see the latest notes before editing.' : 'Saved automatically when you leave the box'}
+        {saved ? 'Saved on this device' : 'Saved on this device when you leave the box'}
       </p>
     </div>
   );
@@ -184,17 +183,20 @@ export function EventDetailPage() {
   const toast = useToast();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['event', id], queryFn: () => get<EventDetail>(`/api/events/${id}`) });
-  const m = useEventState(id);
+  const editor = useEditor();
+  const local = useEventState(q.data ?? { id });
+  const st = local.state;
   const [bookingOpen, setBookingOpen] = useState(false);
-  const [editBooking, setEditBooking] = useState<Booking | null>(null);
+  const [editBooking, setEditBooking] = useState<LocalBooking | null>(null);
   if (q.isLoading) return <Spinner />;
   const e = q.data;
   if (!e) return <ErrorNote error={q.error} />;
   const refresh = () => qc.invalidateQueries({ predicate: (x) => x.queryKey[0] !== 'meta' });
+  const snap = snapshotOf(e);
   const when = whenWithZone(e, e.timezone);
   const unverified = new Set(e.unverified_fields);
   const tba = new Set(e.tba_fields);
-  const selectedOcc = e.occurrences.find((o) => o.id === e.state.occurrence_id);
+  const selectedOcc = e.occurrences.find((o) => o.id === st.occurrence_id);
   const upcomingOccs = e.occurrences.filter((o) => !o.past);
   const saleTz = e.sale_timezone ?? e.timezone;
   const days = [...new Set(e.artists.map((a) => a.date).filter(Boolean))] as string[];
@@ -355,7 +357,7 @@ export function EventDetailPage() {
               <p className="muted small">Choose the date you plan to go — only that date goes in your calendar.</p>
               <div className="chip-row wrap">
                 {upcomingOccs.slice(0, 40).map((o) => (
-                  <button key={o.id} type="button" className={`chip ${e.state.occurrence_id === o.id ? 'on' : ''}`} aria-pressed={e.state.occurrence_id === o.id} onClick={() => m.mutate({ occurrence_id: e.state.occurrence_id === o.id ? null : o.id })}>
+                  <button key={o.id} type="button" className={`chip ${st.occurrence_id === o.id ? 'on' : ''}`} aria-pressed={st.occurrence_id === o.id} onClick={() => local.set({ occurrence_id: st.occurrence_id === o.id ? null : o.id })}>
                     {dayLabel(o.start_local)}
                   </button>
                 ))}
@@ -466,37 +468,7 @@ export function EventDetailPage() {
           </section>
         </div>
 
-        <aside className="detail-side" aria-label="Your plans">
-          <section className="card plan-card">
-            <h2 className="side-title">Your plans</h2>
-            <div className="plan-buttons" role="radiogroup" aria-label="Planning status">
-              {(['interested', 'going', 'booked'] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  role="radio"
-                  aria-checked={e.state.plan_status === s}
-                  className={`plan-btn plan-${s} ${e.state.plan_status === s ? 'on' : ''}`}
-                  title={PLAN_STATUS_HELP[s]}
-                  onClick={() => m.mutate({ plan_status: e.state.plan_status === s ? 'none' : s })}
-                >
-                  {PLAN_STATUS_LABELS[s]}
-                </button>
-              ))}
-            </div>
-            <p className="muted small">{PLAN_STATUS_HELP[e.state.plan_status]}</p>
-            {e.recurring && e.occurrences.length > 1 && e.state.plan_status !== 'none' && !selectedOcc && <p className="small warn-text">Choose a date below the details so this appears in your calendar.</p>}
-            <div className="btn-row">
-              <button type="button" className={`btn btn-ghost ${e.state.favourite ? 'on' : ''}`} aria-pressed={e.state.favourite} onClick={() => m.mutate({ favourite: !e.state.favourite })}>
-                <Heart size={16} aria-hidden fill={e.state.favourite ? 'currentColor' : 'none'} /> {e.state.favourite ? 'Favourite' : 'Add to favourites'}
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={() => download(`/api/events/${e.id}/ics`, `${e.title.replace(/[^\w]+/g, '-')}.ics`).catch((x) => toast(errorMessage(x), 'error'))}>
-                <Download size={16} aria-hidden /> Add to calendar (.ics)
-              </button>
-            </div>
-            <Notes e={e} />
-          </section>
-
+        <aside className="detail-side" aria-label="Tickets and your plans">
           <section className="card">
             <h2 className="side-title">Tickets</h2>
             <dl className="kv compact">
@@ -546,143 +518,140 @@ export function EventDetailPage() {
             <p className="muted small">A listing page alone does not confirm live ticket availability.</p>
           </section>
 
-          <section className="card">
-            <h2 className="side-title">Your bookings</h2>
-            {e.bookings.length ? (
-              <ul className="booking-list">
-                {e.bookings.map((b) => (
-                  <li key={b.id}>
-                    <div>
-                      <strong>{b.provider ?? 'Booking'}</strong> {money(b.amount, b.currency)}
-                      {b.quantity ? ` · ${b.quantity} ticket${b.quantity > 1 ? 's' : ''}` : ''}
-                      {b.ticket_type ? ` · ${b.ticket_type}` : ''}
-                      {b.reference && <div className="small">Ref: {b.reference}</div>}
-                      {b.links.map((l) => (
-                        <div key={l} className="small">
-                          <a href={l} target="_blank" rel="noreferrer">
-                            Booking link
-                          </a>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="btn-row">
-                      <button type="button" className="icon-btn" aria-label="Edit booking" onClick={() => setEditBooking(b)}>
-                        <Pencil size={15} aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label="Delete booking"
-                        onClick={async () => {
-                          if (!confirm('Delete this booking record?')) return;
-                          await api('DELETE', `/api/bookings/${b.id}`);
-                          refresh();
-                        }}
-                      >
-                        <Trash2 size={15} aria-hidden />
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted small">No booking recorded.</p>
-            )}
-            <button type="button" className="btn btn-ghost" onClick={() => setBookingOpen(true)}>
-              <Ticket size={16} aria-hidden /> {e.bookings.length ? 'Add another booking' : 'I’ve booked tickets'}
-            </button>
-          </section>
-
-          {e.possible_matches.length > 0 && (
-            <section className="card">
-              <h2 className="side-title">Possible official listing</h2>
-              <p className="small">Research found a listing that may be this event. Moving your plans keeps your notes and bookings and adds its sources and updates.</p>
-              <ul className="plain-list">
-                {e.possible_matches.map((pm) => (
-                  <li key={pm.id}>
-                    <Link to={`/events/${pm.id}`}>{pm.title}</Link> <span className="muted small">· {pm.city}</span>{' '}
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={async () => {
-                        if (!confirm('Move your plans, notes and bookings to this listing and remove your manual entry?')) return;
-                        try {
-                          await api('POST', `/api/events/${e.id}/merge`, { target_id: pm.id });
-                          refresh();
-                          nav(`/events/${pm.id}`, { replace: true });
-                        } catch (x) {
-                          toast(errorMessage(x), 'error');
-                        }
-                      }}
-                    >
-                      Use this listing
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          <section className="card quiet">
+          <section className="card plan-card">
+            <h2 className="side-title">Save and plan <span className="muted small">· this device</span></h2>
             <div className="btn-row">
-              <button type="button" className="btn btn-ghost" onClick={() => m.mutate({ hidden: !e.state.hidden })}>
-                {e.state.hidden ? <Eye size={16} aria-hidden /> : <EyeOff size={16} aria-hidden />} {e.state.hidden ? 'Show this event again' : 'Hide this event'}
+              <button type="button" className={`btn btn-ghost ${st.favourite ? 'on' : ''}`} aria-pressed={st.favourite} onClick={() => local.set({ favourite: !st.favourite })}>
+                <Heart size={16} aria-hidden fill={st.favourite ? 'currentColor' : 'none'} /> {st.favourite ? 'Favourite' : 'Add to favourites'}
               </button>
               <button
                 type="button"
                 className="btn btn-ghost"
-                onClick={async () => {
-                  await api('POST', `/api/events/${e.id}/feedback`, { kind: 'less_similar' });
-                  toast('Got it — fewer events like this in Highlights');
-                  refresh();
+                onClick={() => {
+                  const occ = e.occurrences.filter((o) => (st.occurrence_id ? o.id === st.occurrence_id : !o.past)).slice(0, st.occurrence_id ? 1 : 1);
+                  const ics = buildIcs(
+                    'Quartet',
+                    occ.map((o) => ({ uid: `${o.id}@quartet`, title: e.title, start_local: o.start_local, start_utc: o.start_utc, end_utc: o.end_utc, start_time_known: o.start_time_known, end_time_known: o.end_time_known, timezone: e.timezone, location: [e.venue?.name, e.town ?? e.city, e.country].filter(Boolean).join(', '), description: e.description, url: e.ticket_url ?? window.location.href, cancelled: e.status === 'cancelled' })),
+                  );
+                  downloadText(ics, `${e.title.replace(/[^\w]+/g, '-')}.ics`);
+                }}
+              >
+                <Download size={16} aria-hidden /> Add to calendar (.ics)
+              </button>
+            </div>
+            <details className="plan-more" open={st.plan_status !== 'none' || local.bookings.length > 0 || !!st.notes}>
+              <summary>Plans, notes and bookings</summary>
+              <div className="plan-buttons" role="radiogroup" aria-label="Planning status">
+                {(['interested', 'going', 'booked'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    role="radio"
+                    aria-checked={st.plan_status === s}
+                    className={`plan-btn plan-${s} ${st.plan_status === s ? 'on' : ''}`}
+                    title={PLAN_STATUS_HELP[s]}
+                    onClick={() => local.set({ plan_status: st.plan_status === s ? 'none' : s })}
+                  >
+                    {PLAN_STATUS_LABELS[s]}
+                  </button>
+                ))}
+              </div>
+              <p className="muted small">{PLAN_STATUS_HELP[st.plan_status]}</p>
+              {e.recurring && e.occurrences.length > 1 && st.plan_status !== 'none' && !selectedOcc && <p className="small warn-text">Choose a date under “Dates” so this appears in your calendar.</p>}
+              <NotesBox value={st.notes} onSave={(v) => local.set({ notes: v })} />
+              <h3 className="small strong">Your bookings</h3>
+              {local.bookings.length ? (
+                <ul className="booking-list">
+                  {local.bookings.map((b) => (
+                    <li key={b.id}>
+                      <div>
+                        <strong>{b.provider ?? 'Booking'}</strong> {money(b.amount, b.currency)}
+                        {b.quantity ? ` · ${b.quantity} ticket${b.quantity > 1 ? 's' : ''}` : ''}
+                        {b.ticket_type ? ` · ${b.ticket_type}` : ''}
+                        {b.reference && <div className="small">Ref: {b.reference}</div>}
+                        {b.links.map((l) => (
+                          <div key={l} className="small">
+                            <a href={l} target="_blank" rel="noreferrer">
+                              Booking link
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="btn-row">
+                        <button type="button" className="icon-btn" aria-label="Edit booking" onClick={() => setEditBooking(b)}>
+                          <Pencil size={15} aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          aria-label="Delete booking"
+                          onClick={() => {
+                            if (confirm('Delete this booking record from this device?')) deleteBooking(b.id);
+                          }}
+                        >
+                          <Trash2 size={15} aria-hidden />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBookingOpen(true)}>
+                <Ticket size={15} aria-hidden /> {local.bookings.length ? 'Add another booking' : 'I’ve booked tickets'}
+              </button>
+            </details>
+          </section>
+
+          <section className="card quiet">
+            <div className="btn-row">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => local.set({ hidden: !st.hidden })}>
+                {st.hidden ? <Eye size={16} aria-hidden /> : <EyeOff size={16} aria-hidden />} {st.hidden ? 'Show this event again' : 'Hide this event'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  addFeedback(e.id, e.categories, e.genres);
+                  toast('Got it — fewer events like this in Highlights on this device');
                 }}
               >
                 <ThumbsDown size={16} aria-hidden /> Fewer like this
               </button>
-              {e.origin === 'manual' && (
+              {e.origin === 'manual' && editor.unlocked && (
                 <>
-                  <Link to={`/events/${e.id}/edit`} className="btn btn-ghost">
-                    <Pencil size={16} aria-hidden /> Edit
+                  <Link to={`/events/${e.id}/edit`} className="btn btn-ghost btn-sm">
+                    <Pencil size={16} aria-hidden /> Edit listing
                   </Link>
                   <button
                     type="button"
-                    className="btn btn-ghost danger"
+                    className="btn btn-ghost btn-sm danger"
                     onClick={async () => {
-                      if (!confirm('Delete this event and its bookings and notes?')) return;
+                      if (!confirm('Delete this shared listing for every device?')) return;
                       await api('DELETE', `/api/events/${e.id}`);
                       refresh();
-                      nav('/calendar');
+                      nav('/');
                     }}
                   >
-                    <Trash2 size={16} aria-hidden /> Delete
+                    <Trash2 size={16} aria-hidden /> Delete listing
                   </button>
                 </>
               )}
             </div>
-            <p className="muted small">Last updated {DateTime.fromISO(e.updated_at).setLocale('en-GB').toRelative()}</p>
+            <p className="muted small">Listing updated {DateTime.fromISO(e.updated_at).setLocale('en-GB').toRelative()}</p>
           </section>
         </aside>
       </div>
 
       <Dialog open={bookingOpen} onClose={() => setBookingOpen(false)} title="Record a booking">
         <BookingForm
-          eventId={e.id}
-          onDone={() => {
-            setBookingOpen(false);
-            refresh();
-          }}
+          target={e.id}
+          snapshot={snap}
+          onDone={() => setBookingOpen(false)}
         />
       </Dialog>
       <Dialog open={!!editBooking} onClose={() => setEditBooking(null)} title="Edit booking">
         {editBooking && (
-          <BookingForm
-            eventId={e.id}
-            initial={editBooking}
-            onDone={() => {
-              setEditBooking(null);
-              refresh();
-            }}
-          />
+          <BookingForm target={e.id} initial={editBooking} onDone={() => setEditBooking(null)} />
         )}
       </Dialog>
     </article>

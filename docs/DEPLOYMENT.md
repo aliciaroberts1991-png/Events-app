@@ -22,11 +22,15 @@ There are no other external services. Fonts and icons are bundled, and no analyt
 See `.env.example` for all variables. The minimum for production:
 
 ```
-OWNER_EMAIL=…            # first start creates the owner account
-OWNER_PASSWORD=…         # at least 10 characters; can be removed after the first start
+EDITOR_PASSWORD=…        # unlocks editing of shared data; at least 10 characters
 PUBLIC_URL=https://…     # used in emails, ICS links and the OpenAPI document
 DATABASE_URL=sqlite:/data/quartet.db   # or postgres://…
 ```
+
+Browsing needs no sign-in, so anyone with the address can view listings and the followed-artist
+list. Personal plans are never on the server. If you also want viewing restricted, put the site
+behind your host's access protection (for example HTTP basic auth at the proxy). The app does not
+require that.
 
 `COOKIE_SECURE` defaults to `true` when `NODE_ENV=production`. That is correct behind HTTPS. Set it to `false` only for plain-http testing.
 
@@ -45,7 +49,7 @@ Data lives in the `quartet-data` volume, mounted at `/data`.
 ```bash
 fly launch --no-deploy          # accept the existing fly.toml or edit app name/region
 fly volumes create quartet_data --size 1 --region vie
-fly secrets set OWNER_EMAIL=… OWNER_PASSWORD=… PUBLIC_URL=https://<app>.fly.dev
+fly secrets set EDITOR_PASSWORD=… PUBLIC_URL=https://<app>.fly.dev
 fly deploy
 ```
 
@@ -55,7 +59,7 @@ single-writer. For more than one machine, use PostgreSQL.
 ## Option C — Render (Docker, persistent disk)
 
 Use `render.yaml` as a Blueprint, or create a Docker web service with a 1 GB disk mounted at `/data`.
-Then set `OWNER_EMAIL`, `OWNER_PASSWORD` and `PUBLIC_URL`. A persistent disk needs a paid instance
+Then set `EDITOR_PASSWORD` and `PUBLIC_URL`. A persistent disk needs a paid instance
 type.
 
 ## Option D — PostgreSQL
@@ -78,15 +82,16 @@ platform.
 
 ## After the first deploy
 
-1. Open the site and sign in with `OWNER_EMAIL` / `OWNER_PASSWORD`.
-2. Settings → Research and updates → **Create token**. Store the token as a secret in the research executor.
-3. Verify the connection with a real authenticated write:
+1. Open the site. Browsing works straight away.
+2. Settings → Editing access → **Unlock editing** with `EDITOR_PASSWORD`. Do this once on each device you will use for editing.
+3. Settings → Research and updates → **Create token**. Store the token as a secret in the research executor.
+4. Verify the connection with a real authenticated write:
    ```bash
    RESEARCH_API=https://your-app/api/research/v1 RESEARCH_TOKEN=qrt_… node scripts/reference-executor.mjs --ping
    ```
    The status changes from *Awaiting connection* to *Connected*. It reads *Operational* only after a discovery or verification run has completed.
-4. Optional email: set `SMTP_URL` and `EMAIL_FROM`, restart, then Settings → Notifications → **Send a test email**. The status shows *Working* only after the provider accepts a message.
-5. Optional demo data: Settings → Your data → Load demo data. Remove it before relying on real listings.
+5. Optional email: set `SMTP_URL` and `EMAIL_FROM`, restart, then Settings → Notifications → **Send a test email**. The status shows *Working* only after the provider accepts a message.
+6. Optional demo data: Settings → Research and updates → Load demo data. Remove it before relying on real listings.
 
 ## Command-line maintenance
 
@@ -94,7 +99,7 @@ Use `npm run <script>` in development. In production, use `node dist/server/cli.
 
 | Command | Purpose |
 | --- | --- |
-| `owner --email you@x --password …` | Create the owner, or reset the password |
+| `editor-password --password …` | Set or reset the editor passphrase (`npm run editor:password`) |
 | `token --name "ChatGPT"` | Create a research API token (printed once) |
 | `migrate` | Run migrations (they also run at start-up) |
 | `backup [--dir backups]` | Consistent SQLite backup file |

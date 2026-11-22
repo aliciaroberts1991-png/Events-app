@@ -4,11 +4,12 @@ import { PlanChip, StatusBadges } from '../components/EventCard';
 import { DateFilter, DEFAULT_FILTERS, MultiPicker, SortSelect, type FilterState } from '../components/Filters';
 import { Empty, ErrorNote, PageHeader, Segmented, Spinner } from '../components/ui';
 import { countryName, dayLabel, formatLabel, genreLabel, placeText, priceText, saleText, whenText } from '../lib/format';
-import { useUrlState } from '../lib/hooks';
+import { useDeviceView, useEventState, useUrlState } from '../lib/hooks';
 import type { EventSummary } from '../lib/types';
 import { useEventQuery } from './Discover';
 
 function FestivalCard({ e }: { e: EventSummary }) {
+  const { state } = useEventState(e);
   const followed = e.artists.filter((a) => a.followed);
   const headliners = e.artists.filter((a) => a.billing === 'headliner' && !a.followed).slice(0, 4);
   const price = priceText(e);
@@ -18,7 +19,7 @@ function FestivalCard({ e }: { e: EventSummary }) {
       <div className="card-top">
         <p className="card-when">{whenText(e, e.timezone, { year: true })}</p>
         <div className="card-flags">
-          <PlanChip status={e.state.plan_status} />
+          <PlanChip status={state.plan_status} />
         </div>
       </div>
       <h3 className="card-title">
@@ -67,7 +68,8 @@ function FestivalCard({ e }: { e: EventSummary }) {
 export function FestivalsPage() {
   const [f, set] = useUrlState<FilterState & { scope: string; country: string }>({ ...DEFAULT_FILTERS, mode: 'all', scope: 'nearby', country: '' });
   const q = useEventQuery({ ...f, loc: 'europe' }, { festival_scope: f.scope, countries: f.country || undefined, kind: 'festival', scope: 'europe' }, '/api/festivals');
-  const all = q.data?.items ?? [];
+  const view = useDeviceView(q.data?.items, f.mode);
+  const all = view.visible;
   const items = f.mode === 'highlights' ? all.filter((e) => e.highlight) : all;
   const countries = [...new Set(all.map((e) => e.country).filter(Boolean))] as string[];
   return (

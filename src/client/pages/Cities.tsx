@@ -7,7 +7,7 @@ import { DEFAULT_FILTERS, FilterBar, ModeToggle, type FilterState } from '../com
 import { Empty, ErrorNote, PageHeader, Segmented, Spinner } from '../components/ui';
 import { get } from '../lib/api';
 import { dayLabel, groupOf, relative } from '../lib/format';
-import { useMeta, useUrlState } from '../lib/hooks';
+import { useDeviceView, useMeta, useUrlState } from '../lib/hooks';
 import { Coverage, useEventQuery } from './Discover';
 
 export function CitiesPage() {
@@ -61,14 +61,15 @@ export function CityPage() {
   const [f, set] = useUrlState<FilterState & { view: string }>({ ...DEFAULT_FILTERS, view: 'category' });
   const loc = slug === 'all' ? 'all4' : slug;
   const q = useEventQuery({ ...f, loc });
-  const items = q.data?.items ?? [];
+  const view = useDeviceView(q.data?.items, f.mode, q.data?.counts);
+  const items = view.visible;
   const byGroup = CATEGORY_GROUPS.map((g) => ({ ...g, items: items.filter((e) => groupOf(e) === g.slug) })).filter((g) => g.items.length);
   return (
     <div className="page">
       <p className="crumbs">
         <Link to="/cities">Cities</Link>
       </p>
-      <PageHeader title={hub?.name ?? 'All four cities'} actions={<ModeToggle value={f.mode} onChange={(v) => set({ mode: v })} counts={q.data?.counts} />} />
+      <PageHeader title={hub?.name ?? 'All four cities'} actions={<ModeToggle value={f.mode} onChange={(v) => set({ mode: v })} counts={view.counts} />} />
       <FilterBar
         f={{ ...f, loc }}
         set={(p) => set(p as never)}

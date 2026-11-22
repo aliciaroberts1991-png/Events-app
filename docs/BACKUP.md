@@ -1,37 +1,46 @@
 # Backup and recovery
 
-Personal records are the irreplaceable part: watchlist, preferences, statuses, notes, bookings,
-your own events and plans. Research data can always be collected again.
+There are two kinds of data, backed up in different ways:
 
-## 1. Personal data export (any database, from the app)
+- **Personal data on each device**, in browser storage. It covers:
+  - favourites, hidden events and Interested/Going/Booked
+  - notes and bookings
+  - your own entries and personal plans
+  - clash reviews, "fewer like this" and Ibiza stays
 
-Settings → Your data → **Export my data** downloads a JSON file (format `quartet-personal-export`,
-version 1, schema in `docs/schemas/personal-export.schema.json`). It contains:
-- preferences
-- watchlist, with aliases, links and keys
-- your own events, in full
-- statuses, favourites, hidden flags and notes
-- bookings
-- personal plans
-- clash reviews
-- "fewer like this" feedback
-- Ibiza stays
+  It is not on the server, so a server backup does not contain it.
+- **Central data on the server.** It covers:
+  - the followed-artist list
+  - interests, places, schedule and notification settings
+  - listings, research history and the update feed
 
-Event references carry the id **and** identifying facts (title, date, city, source keys).
+## 1. Device data: export and import (from the app, no editing access needed)
 
-**Import** (Settings → Your data → Choose export file):
-- A **preview** comes first. It shows what will be added, what is already present and what cannot be matched.
+Settings → This device → **Export this device's data** downloads a JSON file. Its format is `quartet-device-data`, version 1, with the schema in `docs/schemas/device-data-export.schema.json`. Event references are the central ids, which are the same on every device, together with a readable snapshot of each listing's title and date.
+
+**Import** (Settings → This device → Import a file):
+- A **preview** comes first.
 - **Merge** never deletes anything. Duplicates are skipped:
-  - bookings with the same reference, provider and amount
+  - entries with the same title, start and city
+  - bookings with the same target, reference, provider and amount
   - plans with the same title and start
-  - your own events with the same title, date and city
-- Existing notes are kept; differing notes are appended.
-- Preferences are only replaced if you choose "Import and replace preferences".
-- An event that no longer exists is matched by its source keys, or by title, date and city. Anything still unmatched is reported, not lost: re-import after research has collected the event again.
+  - stays with the same dates
+- For an event saved on both devices:
+  - the stronger plan status is kept
+  - favourites are combined
+  - the more recent hidden/date choice wins
+  - differing notes are kept side by side
+- Importing the same file twice changes nothing.
 
-Export after significant changes, and keep copies off the server.
+The same file also moves your plans between your phone and your laptop: export on one, import on the other.
 
-## 2. Full database backups
+**Keeping device data safe:**
+- Browsers can clear website storage. Safari on iPhone does so after weeks without a visit, and private windows keep nothing.
+- The app asks the browser for persistent storage and shows the result under Settings → This device.
+- Adding the app to the iPhone Home Screen and exporting a backup now and then is recommended. Settings shows the last backup date.
+- If stored data can ever not be read, it is copied to a recovery key in localStorage rather than discarded.
+
+## 2. Central data: database backups
 
 ### SQLite (default)
 - Consistent online backup (safe while running):
@@ -51,15 +60,17 @@ Export after significant changes, and keep copies off the server.
 
 | Situation | Steps |
 | --- | --- |
-| Server or volume lost | Deploy again, restore the latest database backup to the volume (or `pg_restore`), then start. Migrations bring an older backup up to date automatically. |
-| No database backup, but a personal export | Deploy fresh, sign in, import the export (merge). Let research run to rebuild listings, then import the export again to attach any statuses that could not yet be matched. |
-| Bad research import | Listings can be corrected by a further import, because partial updates and `null` clear fields. Personal data is unaffected. To roll back completely, restore the database backup taken before the import. |
-| Forgotten password | `node dist/server/cli.js owner --email you@example.com --password '<new>'` |
+| Server or volume lost | Deploy again and restore the latest database backup (or `pg_restore`), then start. Migrations bring an older backup up to date automatically. Device data is unaffected. |
+| No database backup | Deploy fresh. Re-add the followed artists and settings (unlock editing first), then let research rebuild the listings. Saved events on your devices refer to the old ids, so they show under "no longer available" with their remembered titles until research finds them again. |
+| Phone or browser data lost | Import your latest device export (Settings → This device). |
+| Bad research import | Correct it with a further import: partial updates work, and `null` clears fields. For a full rollback, restore the database backup taken before the import. |
+| Forgotten editor passphrase | Set `EDITOR_PASSWORD` and restart, or run `node dist/server/cli.js editor-password --password '<new>'`. |
+| Lost or stolen device that was unlocked for editing | Settings → Editing access → lock that device, or change the passphrase (which locks every other device). |
 | Leaked research token | Settings → Research → Revoke, then create a new token. |
-| Moving SQLite to PostgreSQL | Export personal data, deploy with `DATABASE_URL=postgres://…`, import the export. Research data is collected again, or re-imported from your research JSON files. |
+| Moving SQLite to PostgreSQL | Back up first. Then copy the central tables with a migration script of your choice, or start fresh as in "No database backup". Device data is unaffected either way. |
 
 ## 4. Upgrades
 
 - Migrations are numbered and run at start-up.
 - Back up before deploying a new version.
-- Never edit an existing migration: add `0002_….ts` and register it in `src/server/db/index.ts`.
+- Never edit an existing migration: add the next number, e.g. `0003_….ts`, and register it in `src/server/db/index.ts`.

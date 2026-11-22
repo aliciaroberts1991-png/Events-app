@@ -1,59 +1,57 @@
 # Verification report
 
-Verified on 22 November 2026 in a Linux container: Node 22, SQLite 3.54, PostgreSQL 16.15 and Chromium (Playwright 1.63).
+Verified on 22 November 2026, after the requirements revision. Environment: a Linux container with Node 22, SQLite 3.54, PostgreSQL 16.15 and Chromium (Playwright 1.63).
+
+Requirements revision being verified:
+- discovery comes first
+- the followed-artist list and settings are central, and editing them is protected
+- browsing works without sign-in
+- personal planning data stays on each device, with export and import
 
 ## Automated test results
 
 | Suite | Command | Result |
 | --- | --- | --- |
 | Type check (server, client, tests) | `npm run typecheck` | Passed |
-| Server tests on SQLite | `npm test` | **63/63 passed** |
-| Same server tests on PostgreSQL 16 | `npm run test:pg` | **63/63 passed** |
-| Browser journeys, desktop 1366×900 and phone 375×812 | `npm run build && npm run test:e2e` | **20/20 passed** |
+| Server and shared-logic tests on SQLite | `npm test` | **67/67 passed** |
+| Same tests on PostgreSQL 16 | `npm run test:pg` | **67/67 passed** |
+| Browser journeys: laptop 1366×900 plus a separate phone context at 375×812, acting as two devices | `npm run build && npm run test:e2e` | **22/22 passed** |
 
-## Requested journeys, and where each is verified
+## Revised requirements
 
-| Journey | Server tests (`tests/server/…`) | Browser (`scripts/e2e.mjs`) |
-| --- | --- | --- |
-| Combined city, category, genre and date filters | personal: "Vienna, next weekend, food and drink"; "all four cities, this month, drum and bass"; "Bratislava, English-language comedy…"; nearby radius | "combined filters: Bratislava + next weekend + drum and bass, with explicit dates" |
-| Highlights and All events | personal: "highlights prioritise followed artists…"; "fewer like this…" | "Highlights is the default and All events shows more" |
-| Watchlist editing and persistence | personal: "adds, edits, pauses and removes artists without touching saved events"; "keeps similarly named acts apart…"; research: `/context` exposes active and paused artists | "watchlist: add, pause and remove an artist through the interface" (persists after reload) |
-| European artist dates and festival associations | personal: "European festivals featuring an artist I follow"; "lists European appearances and festival associations per artist" | "European artist dates and festival associations" |
-| Ibiza holiday-date filtering | personal: "filters parties to holiday dates and separates residencies from confirmed dates" | "Ibiza: holiday dates show only overlapping parties" |
-| Saved statuses and notes across devices | personal: "syncs statuses and notes between two sessions and detects conflicting edits" (409 on stale edits) | "saved status and notes are the same on another device" (separate phone browser) |
-| Manual bookings and personal plans | personal: "enters an already-booked show quickly"; "merges a manual booking into the researched listing" | "quick booking: enter an already-booked Chase & Status show"; "add an event manually from the form" |
-| Calendar clashes | personal: "detects real overlaps, possible same-day clashes and allows keeping both" | "personal plan and calendar clash, keeping both" |
-| Overnight events, timezones, multi-day festivals | dates: overnight roll-over, October and March DST changes, London zone, missing times, multi-day spans; personal: "compares events in different timezones correctly", ICS UTC and all-day output | ICS download in "calendar: Interested toggle, month view and ICS download" |
-| Repeated imports and duplicate detection | research: "creates events and reports repeated imports as unchanged"; "matches without source keys by title, date and place"; idempotency replay and conflict | Manual import twice: "1 created" then "1 unchanged" |
-| Partial updates and interrupted jobs | research: "applies partial updates: absent fields are kept, null clears"; "marks interrupted runs failed when the lease expires and keeps imported data"; "re-sending an interrupted batch completes it idempotently" | — |
-| Personal data preserved after refreshes and migrations | research: "keeps personal data after re-imports, demo refresh and a restart on the same database"; personal: demo removal keeps real records; export → fresh database → import round trip with duplicates | — |
-| Private access and protected update endpoints | research: missing, wrong and revoked tokens are refused; personal: sign-in required, CSRF header required, login throttling, logout invalidates the session | "private access: unauthenticated API is refused…" |
-| Accurate search and notification status | research: executor *Awaiting connection* → *Connected* after `/ping` → *Operational* only after a completed run; queued → running → completed; schedule queues once; personal: email *Not configured*; feed de-duplication | "accurate research status, Search now queues a real job…"; "notification status is shown accurately" |
-| Mobile usability and keyboard access | — | Bottom navigation across all six views; no horizontal scrolling on 13 screens at 375 px; skip link; visible focus outline; arrow keys in the mode toggle; Enter opens a focused card |
+| Requirement | Where verified |
+| --- | --- |
+| Browse without signing in | browse.test "lists, filters, searches and opens events anonymously"; e2e "browsing works without signing in" |
+| Central followed-artist list, editable in the app; a change on either device appears on both and reaches scheduled searches | browse.test "changes made on one device appear on another and in the research context"; e2e: an artist added and paused on the laptop is seen paused on the phone and in `/research/v1/context`, then resumed from the phone |
+| Protected editing of central data | browse.test "refuses writes without an unlocked editor session"; unlock with throttling and lock; editing stays locked with no passphrase configured; e2e "protected endpoints refuse changes…" |
+| Personal data stays on the device | e2e: a favourite, Going and notes set on the laptop are absent on the phone; the server returns no `state` or `bookings` (browse.test) |
+| Optional export and import for backup and moving between devices | device-data.test: round trip, validation, merge without duplicates, stronger status kept, both notes kept, bookings re-pointed to an existing entry; e2e: export on the laptop, import on the phone, notes appear, and a re-import adds nothing |
+| Calendar and bookings secondary in the interface | e2e: five discovery tabs on the phone, My plans in the header, plan controls collapsed until used |
+| Central data preserved across restarts and migrations | research.test "keeps the central artist list, settings and editor sessions after re-imports and a restart"; "migration 0002 keeps any rows from the earlier server-side personal tables" |
+| Optional sharing of Going/Booked ids for verification priority | browse.test "shared Going/Booked ids raise verification priority and trigger change alerts; each device replaces only its own set" |
 
-The documented example payloads (`examples/`) are validated and imported, in order, by `tests/server/examples.test.ts`.
+## Original journeys, still covered
 
-## Manual checks
+| Journey | Where |
+| --- | --- |
+| Combined city, category, genre and date filters | browse.test (four combinations); e2e combined filters |
+| Highlights and All events | browse.test; e2e |
+| European artist dates and festival associations | browse.test; e2e |
+| Ibiza holiday-date filtering | browse.test; e2e (the stay is saved on the device) |
+| Manual bookings and personal plans | e2e: Chase & Status booking entered on the device; personal plan |
+| Calendar clashes, overnight events, time zones, multi-day festivals | device-data.test: overlap, possible clash, overnight tail, cancelled, cross-zone, reviewed pairs, needs-a-date; dates.test: DST and overnight; e2e: clash, Keep both, Interested toggle, month view, ICS |
+| ICS format | device-data.test: UTC, all-day, escaping, line folding; e2e download |
+| Repeated imports, duplicate detection, partial updates, interrupted jobs | research.test (unchanged from before) |
+| Accurate research and notification status | research.test; e2e: *Connected* after a token is used, Search now queues, manual import; notifications *Not configured* |
+| Mobile usability and keyboard access | e2e: no horizontal scrolling on 13 screens, a Filters toggle on phones, skip link, visible focus, arrow keys, Enter opens a card |
 
-- **Research connection with a real token.** Against the running production build, `scripts/reference-executor.mjs` did the following:
-  1. made an authenticated `/ping`
-  2. claimed the scheduled discovery run that the internal scheduler had queued
-  3. read `/context` (5 active artists)
-  4. imported `examples/01-discovery-import.json` (4 created)
-  5. completed the run with coverage, and a second verification run, with outcomes recorded
-
-  The status page moved from *Awaiting connection* to *Operational*, and coverage showed every area. This check found a real interoperability bug: an empty JSON body was rejected. It is fixed and covered by a test.
-- **Visual review.** Screenshots were reviewed at 1366 px and 390 px: Discover, Cities, Festivals, Artists, Ibiza (all tabs), calendar agenda and month, event detail, Settings → Research.
-- **Colour contrast.** Every text/background token pair is at least 4.5:1 in both light and dark themes. The lowest is 4.71:1 (accent text on its tinted badge, light theme).
-
-## Not verified here, and why
+## Not verified here
 
 | Item | Reason | What to do |
 | --- | --- | --- |
-| Docker image build | No Docker daemon in the build environment | `docker compose up --build`. CI also builds the app. |
-| Deployment to a real host | Needs the owner's hosting account | Follow docs/DEPLOYMENT.md, then the "After the first deploy" checklist |
-| Real email delivery | No SMTP provider configured | Set `SMTP_URL` and `EMAIL_FROM`, then use **Send a test email**. The status shows *Working* only after acceptance. |
-| ChatGPT connection | Needs the owner's ChatGPT account and whichever features it offers | docs/RESEARCH_WORKFLOW.md "Connecting ChatGPT". Verify with `/ping`, then a completed run. |
-| Real event listings | No research has been run; only fictional demo data is included | Connect an executor or use manual import with verified sources |
-| Screen-reader walkthrough | Not tested with real assistive technology. Semantic roles and labels are exercised by role-based Playwright queries. | Spot-check with VoiceOver (iPhone) and NVDA or VoiceOver (desktop) |
-| Push notifications | Not implemented; email covers off-app alerts | Optional future addition |
+| Docker image build; deployment to a real host | No Docker daemon or hosting account here | docs/DEPLOYMENT.md |
+| Real email delivery | No SMTP provider configured | Set `SMTP_URL` and `EMAIL_FROM`, then use Send a test email |
+| ChatGPT connection | Needs the owner's account | docs/RESEARCH_WORKFLOW.md, then `/ping` and a completed run |
+| Safari on a real iPhone (storage clean-up behaviour, Home Screen) | Only Chromium was available | Open the deployed site on the iPhone, save a favourite, export a backup |
+| Screen-reader walkthrough | Not tested with real assistive technology | Spot-check with VoiceOver and NVDA |
+| Real event listings | Only fictional demo data is included | Connect research or use manual import |

@@ -1,22 +1,25 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, Download, KeyRound, RefreshCw, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { NavLink, useNavigate, useParams } from 'react-router-dom';
+import { NavLink, useParams } from 'react-router-dom';
 import { CATEGORY_GROUPS, FEED_TYPE_LABELS, FEED_TYPES, GENRES, WEEKDAYS } from '../../shared/taxonomy';
+import { EditingRequired, LockButton, useUnlock } from '../components/Editor';
 import { SearchNowButton } from '../components/Layout';
-import { EventCard } from '../components/EventCard';
-import { Badge, Empty, ErrorNote, Field, PageHeader, Spinner, Toggle } from '../components/ui';
-import { api, download, errorMessage, get } from '../lib/api';
+import { emptyLocalData, makeExport, mergeLocalData, parseExport, type ExportFile, type MergeReport } from '../../shared/local-data';
+import { getLocal, priorityStatus, replaceLocal, storageStatus, syncPriority, updateLocal, useLocal } from '../lib/local';
+import { downloadText } from '../lib/plans';
+import { Badge, ErrorNote, Field, PageHeader, Spinner, Toggle } from '../components/ui';
+import { api, errorMessage, get } from '../lib/api';
 import { relative, stamp } from '../lib/format';
-import { useMeta, useStatus, useToast } from '../lib/hooks';
+import { useEditor, useMeta, useStatus, useToast } from '../lib/hooks';
 
 const SECTIONS = [
+  ['device', 'This device'],
   ['interests', 'Interests'],
   ['places', 'Places and time'],
   ['notifications', 'Notifications'],
   ['research', 'Research and updates'],
-  ['data', 'Your data'],
-  ['account', 'Account'],
+  ['editing', 'Editing access'],
 ] as const;
 
 const WEIGHT_LABELS: Record<string, string> = { '-3': 'Never', '-2': 'Rarely', '-1': 'Less', '0': 'Neutral', '1': 'Like', '2': 'Love', '3': 'Top priority' };
@@ -24,7 +27,8 @@ const WEIGHT_LABELS: Record<string, string> = { '-3': 'Never', '-2': 'Rarely', '
 function usePrefs() {
   const qc = useQueryClient();
   const toast = useToast();
-  const q = useQuery({ queryKey: ['preferences'], queryFn: () => get('/api/preferences') });
+  const editor = useEditor();
+  const q = useQuery({ queryKey: ['preferences', editor.unlocked ? 'full' : 'public'], queryFn: () => get(editor.unlocked ? '/api/preferences/full' : '/api/preferences') });
   const save = async (data: any) => {
     try {
       await api('PUT', '/api/preferences', { data, version: q.data.version });
@@ -56,13 +60,13 @@ function WeightSelect({ value, onChange, label }: { value: number | undefined; o
 function Interests() {
   const { q, save } = usePrefs();
   const [d, setD] = useState<any>(null);
-  const qc = useQueryClient();
   const toast = useToast();
   useEffect(() => setD(q.data?.data ?? null), [q.data]);
   if (!d) return <Spinner />;
   const setW = (k: 'categoryWeights' | 'genreWeights', slug: string, w: number) => setD({ ...d, [k]: { ...d[k], [slug]: w } });
   return (
     <div className="settings-sec">
+      <SharedNote />
       <p className="muted">Highlights favour what you rate highly. “Never” keeps a category out of Highlights; it still appears under All events.</p>
       {CATEGORY_GROUPS.map((g) => (
         <fieldset key={g.slug} className="card weights">
@@ -98,17 +102,14 @@ function Interests() {
         <button
           type="button"
           className="btn btn-ghost"
-          onClick={async () => {
-            await api('DELETE', '/api/feedback');
-            toast('“Fewer like this” feedback cleared');
-            qc.invalidateQueries();
+          onClick={() => {
+            updateLocal((x) => void (x.feedback = []));
+            toast('“Fewer like this” cleared on this device');
           }}
         >
-          Clear “fewer like this” feedback
+          Clear “fewer like this” on this device
         </button>
-        <button type="button" className="btn btn-primary" onClick={() => save(d)}>
-          Save interests
-        </button>
+        <SaveButton onClick={() => save(d)} label="Save interests" />
       </div>
     </div>
   );
@@ -122,6 +123,7 @@ function Places() {
   if (!d) return <Spinner />;
   return (
     <div className="settings-sec">
+      <SharedNote />
       <fieldset className="card">
         <legend>Cities and nearby areas</legend>
         <div className="picker-children">
@@ -155,9 +157,7 @@ function Places() {
         </Field>
       </fieldset>
       <div className="form-actions">
-        <button type="button" className="btn btn-primary" onClick={() => save(d)}>
-          Save
-        </button>
+        <SaveButton onClick={() => save(d)} label="Save" />
       </div>
     </div>
   );
@@ -166,7 +166,8 @@ function Places() {
 function Notifications() {
   const { q, save } = usePrefs();
   const toast = useToast();
-  const st = useQuery({ queryKey: ['notif-status'], queryFn: () => get('/api/notifications/status') });
+  const editor = useEditor();
+  const st = useQuery({ queryKey: ['notif-status'], queryFn: () => get('/api/notifications/status'), enabled: editor.unlocked });
   const [d, setD] = useState<any>(null);
   useEffect(() => setD(q.data?.data ?? null), [q.data]);
   if (!d) return <Spinner />;
@@ -181,6 +182,7 @@ function Notifications() {
   };
   return (
     <div className="settings-sec">
+      <SharedNote />
       <fieldset className="card">
         <legend>In-app updates</legend>
         <p className="muted small">Choose what appears in Updates. Repeated checks never repeat an update unless something actually changed.</p>
@@ -211,7 +213,6 @@ function Notifications() {
             </Field>
           )}
         </div>
-        <Toggle checked={n.email.savedOnly} onChange={(v) => setN({ email: { ...n.email, savedOnly: v } })} label="Only for events I’ve saved or planned" />
         <div className="picker-children">
           {FEED_TYPES.map((t) => (
             <label key={t} className="inline-check">
@@ -224,7 +225,7 @@ function Notifications() {
           <button
             type="button"
             className="btn btn-ghost"
-            disabled={s?.state === 'not_configured'}
+            disabled={!editor.unlocked || s?.state === 'not_configured'}
             onClick={async () => {
               const r = await api('POST', '/api/notifications/test', {});
               toast(r.ok ? 'Test email accepted by the provider' : `Test failed: ${r.error}`, r.ok ? 'ok' : 'error');
@@ -249,9 +250,7 @@ function Notifications() {
         <p className="muted small">Push notifications are not set up; email covers alerts away from the app.</p>
       </fieldset>
       <div className="form-actions">
-        <button type="button" className="btn btn-primary" onClick={() => save(d)}>
-          Save notification settings
-        </button>
+        <SaveButton onClick={() => save(d)} label="Save notification settings" />
       </div>
     </div>
   );
@@ -269,8 +268,9 @@ function Research() {
   const qc = useQueryClient();
   const toast = useToast();
   const status = useStatus();
-  const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => get('/api/research-tokens') });
-  const server = useQuery({ queryKey: ['server'], queryFn: () => get('/api/settings/server') });
+  const editor = useEditor();
+  const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => get('/api/research-tokens'), enabled: editor.unlocked });
+  const server = useQuery({ queryKey: ['server'], queryFn: () => get('/api/settings/server'), enabled: editor.unlocked });
   const meta = useMeta();
   const { q: prefs, save } = usePrefs();
   const [newToken, setNewToken] = useState<string | null>(null);
@@ -326,10 +326,12 @@ function Research() {
             <dt>Webhook push</dt>
             <dd>{s.executor.webhook_configured ? 'Configured (RESEARCH_WEBHOOK_URL)' : 'Not configured — executors poll for queued runs'}</dd>
           </div>
-          <div className="kv-row">
-            <dt>Database</dt>
-            <dd>{server.data?.database === 'postgres' ? 'PostgreSQL' : 'SQLite'}</dd>
-          </div>
+          {server.data && (
+            <div className="kv-row">
+              <dt>Database</dt>
+              <dd>{server.data.database === 'postgres' ? 'PostgreSQL' : 'SQLite'}</dd>
+            </div>
+          )}
         </dl>
         <div className="btn-row">
           <SearchNowButton />
@@ -416,7 +418,8 @@ function Research() {
         )}
       </section>
 
-      {sched && (
+      {!editor.unlocked && <EditingRequired what="change the schedule, create research tokens, import results or load demo data" />}
+      {sched && editor.unlocked && (
         <section className="card">
           <h2 className="side-title">Schedule</h2>
           <p className="muted small">The app queues these runs itself; a connected executor picks them up. Times are in {prefs.data.data.planningTimezone}.</p>
@@ -444,6 +447,7 @@ function Research() {
         </section>
       )}
 
+      {editor.unlocked && (<>
       <section className="card">
         <h2 className="side-title">Connect a research service</h2>
         <p className="small">
@@ -567,232 +571,310 @@ function Research() {
           </div>
         )}
       </section>
+      <DemoSection />
+      </>)}
     </div>
   );
 }
 
-function Data() {
+function DemoSection() {
   const qc = useQueryClient();
   const toast = useToast();
   const meta = useMeta();
-  const hidden = useQuery({ queryKey: ['events', 'hidden'], queryFn: () => get('/api/events?mode=all&scope=any&saved=hidden&include_past=0&limit=100') });
-  const [report, setReport] = useState<any>(null);
-  const [file, setFile] = useState<any>(null);
+  return (
+    <section className="card">
+      <h2 className="side-title">Demo data</h2>
+      <p className="small">Fictional examples so every view can be tried. Labelled “Demo” and removable in one step.</p>
+      {meta.data?.demo.loaded ? (
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={async () => {
+            if (!confirm('Remove all demo data for every device?')) return;
+            await api('DELETE', '/api/demo');
+            toast('Demo data removed');
+            qc.invalidateQueries();
+          }}
+        >
+          Remove demo data ({meta.data.demo.events} events)
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={async () => {
+            await api('POST', '/api/demo', {});
+            toast('Demo data loaded');
+            qc.invalidateQueries();
+          }}
+        >
+          Load demo data
+        </button>
+      )}
+    </section>
+  );
+}
+
+function Device() {
+  const d = useLocal();
+  const toast = useToast();
+  const editor = useEditor();
+  const [preview, setPreview] = useState<{ file: ExportFile; report: MergeReport } | null>(null);
+  const counts = {
+    saved: Object.values(d.states).filter((x) => x.favourite || x.plan_status !== 'none').length,
+    hidden: Object.values(d.states).filter((x) => x.hidden).length,
+    notes: Object.values(d.states).filter((x) => x.notes).length,
+  };
+  const daysSinceBackup = d.last_backup_at ? Math.floor((Date.now() - Date.parse(d.last_backup_at)) / 86400_000) : null;
   return (
     <div className="settings-sec">
+      <p className="muted">
+        Favourites, hidden events, Interested/Going/Booked, notes, bookings, your own entries and personal plans are kept in this browser on this device only. Nothing here needs editing access.
+      </p>
       <section className="card">
-        <h2 className="side-title">Export and import</h2>
-        <p className="small">Your export contains preferences, watchlist, statuses, notes, bookings, your own events and plans. Keep it somewhere safe; see docs/BACKUP.md for full backups.</p>
+        <h2 className="side-title">On this device</h2>
+        <ul className="plain-list small">
+          <li>{counts.saved} saved or planned events · {counts.hidden} hidden · {counts.notes} with notes</li>
+          <li>{d.bookings.length} bookings · {d.entries.length} own entries · {d.plans.length} personal plans · {d.stays.length} Ibiza stays</li>
+          <li>
+            Storage: {storageStatus.available ? 'available' : <strong className="warn-text">not available — this browser is blocking storage (private mode?). Changes will be lost when the tab closes.</strong>}
+            {storageStatus.persisted === true && ' · protected from automatic clean-up'}
+            {storageStatus.persisted === false && ' · the browser may clear it if space runs low or the site is unused for a long time'}
+          </li>
+          <li>Last backup: {d.last_backup_at ? `${stamp(d.last_backup_at)}${daysSinceBackup !== null && daysSinceBackup > 30 ? ' — consider a fresh backup' : ''}` : 'never'}</li>
+        </ul>
+        <p className="small muted">On iPhone, Safari can delete website data after weeks without a visit. Adding the app to the Home Screen and exporting a backup now and then keeps it safe.</p>
+      </section>
+
+      <section className="card">
+        <h2 className="side-title">Back up or move to another device</h2>
+        <p className="small">Export creates a file you can keep as a backup, or import on your phone or laptop to copy your plans across. Importing merges: nothing is deleted and duplicates are skipped.</p>
         <div className="btn-row">
-          <button type="button" className="btn btn-primary" onClick={() => download('/api/export', `personal-data-${new Date().toISOString().slice(0, 10)}.json`).catch((e) => toast(errorMessage(e), 'error'))}>
-            <Download size={16} aria-hidden /> Export my data
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              downloadText(JSON.stringify(makeExport(getLocal()), null, 2), `quartet-device-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
+              updateLocal((x) => void (x.last_backup_at = new Date().toISOString()));
+            }}
+          >
+            <Download size={16} aria-hidden /> Export this device’s data
           </button>
           <label className="btn btn-ghost file-btn">
-            <Upload size={16} aria-hidden /> Choose export file
+            <Upload size={16} aria-hidden /> Import a file
             <input
               type="file"
               accept="application/json,.json"
               className="sr-only"
               onChange={async (e) => {
                 try {
-                  const data = JSON.parse(await e.target.files![0].text());
-                  setFile(data);
-                  setReport(await api('POST', '/api/import-personal?dry_run=1', data));
+                  const file = parseExport(JSON.parse(await e.target.files![0].text()));
+                  setPreview({ file, report: mergeLocalData(getLocal(), file.data).report });
                 } catch (x) {
                   toast(x instanceof SyntaxError ? 'That file is not valid JSON' : errorMessage(x), 'error');
                 }
+                e.target.value = '';
               }}
             />
           </label>
         </div>
-        {report && (
+        {preview && (
           <div className="import-result" role="status">
             <p>
-              <strong>{report.dry_run ? 'Preview — nothing changed yet' : 'Imported'}</strong>
+              <strong>Preview</strong> — exported {stamp(preview.file.exported_at)}. Nothing has changed yet.
             </p>
             <ul className="plain-list small">
-              <li>Watchlist: {report.watchlist.added} to add, {report.watchlist.existing} already present</li>
-              <li>Your events: {report.manual_events.created} to add, {report.manual_events.existing} already present</li>
-              <li>
-                Saved statuses and notes: {report.event_states.applied} to apply, {report.event_states.kept_newer} unchanged, {report.event_states.unmatched} could not be matched
-              </li>
-              <li>
-                Bookings: {report.bookings.added} to add, {report.bookings.duplicates} duplicates skipped, {report.bookings.unmatched} unmatched
-              </li>
-              <li>
-                Plans: {report.plans.added} to add, {report.plans.duplicates} duplicates
-              </li>
+              <li>Saved events: {preview.report.states.added} new, {preview.report.states.updated} to merge, {preview.report.states.unchanged} unchanged</li>
+              <li>Bookings: {preview.report.bookings.added} new, {preview.report.bookings.duplicates} duplicates skipped</li>
+              <li>Own entries: {preview.report.entries.added} new, {preview.report.entries.duplicates} duplicates</li>
+              <li>Personal plans: {preview.report.plans.added} new, {preview.report.plans.duplicates} duplicates</li>
+              <li>Ibiza stays: {preview.report.stays.added} new</li>
             </ul>
-            {report.dry_run && (
-              <div className="btn-row">
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={async () => {
-                    setReport(await api('POST', '/api/import-personal', file));
-                    qc.invalidateQueries();
-                  }}
-                >
-                  Import (merge, keeping current data)
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={async () => {
-                    setReport(await api('POST', '/api/import-personal?replace_preferences=1', file));
-                    qc.invalidateQueries();
-                  }}
-                >
-                  Import and replace preferences
-                </button>
-              </div>
-            )}
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  const { data } = mergeLocalData(getLocal(), preview.file.data);
+                  replaceLocal(data);
+                  setPreview(null);
+                  toast('Imported and merged');
+                }}
+              >
+                Merge into this device
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPreview(null)}>
+                Cancel
+              </button>
+            </div>
           </div>
         )}
       </section>
 
       <section className="card">
-        <h2 className="side-title">Demo data</h2>
-        <p className="small">Fictional examples so you can try every view. They are labelled “Demo” and can be removed in one step; your own records are not affected.</p>
-        {meta.data?.demo.loaded ? (
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={async () => {
-              if (!confirm('Remove all demo data? Statuses and bookings you added to demo events go with them.')) return;
-              await api('DELETE', '/api/demo');
-              toast('Demo data removed');
-              qc.invalidateQueries();
-            }}
-          >
-            Remove demo data ({meta.data.demo.events} events)
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={async () => {
-              await api('POST', '/api/demo', {});
-              toast('Demo data loaded');
-              qc.invalidateQueries();
-            }}
-          >
-            Load demo data
-          </button>
-        )}
+        <h2 className="side-title">Help research check what you’re going to</h2>
+        <Toggle
+          checked={d.share_priority}
+          onChange={(v) => {
+            updateLocal((x) => void (x.share_priority = v));
+            if (!v) syncPriority(true);
+          }}
+          label="Share which listings I’m going to or have booked"
+          hint="Only event ids and Going/Booked are shared — never notes or booking details. Weekly verification then checks those first and changes to them appear in Updates."
+        />
+        <p className="small muted">
+          {editor.unlocked
+            ? priorityStatus.last
+              ? `Last shared ${relative(priorityStatus.last.at)}: ${priorityStatus.last.message}`
+              : 'Shared automatically when you change a plan.'
+            : 'Sharing happens only on devices where editing is unlocked.'}
+        </p>
       </section>
 
-      <section>
-        <h2 className="section-title">Hidden events</h2>
-        {hidden.data?.items.length ? (
-          <div className="card-grid">
-            {hidden.data.items.map((e: any) => (
-              <EventCard key={e.id} e={e} />
-            ))}
-          </div>
-        ) : (
-          <Empty title="No hidden events" />
-        )}
+      <section className="card">
+        <h2 className="side-title">Clear this device</h2>
+        <p className="small">Removes favourites, plans, notes and bookings from this browser. Export first if you might want them back.</p>
+        <button
+          type="button"
+          className="btn btn-ghost danger"
+          onClick={() => {
+            if (!confirm('Delete all personal data stored on this device? This cannot be undone.')) return;
+            replaceLocal({ ...emptyLocalData(getLocal().device_id) });
+            toast('This device’s data was cleared');
+          }}
+        >
+          Clear this device’s data
+        </button>
       </section>
     </div>
   );
 }
 
-function Account() {
+function Editing() {
   const toast = useToast();
-  const nav = useNavigate();
-  const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => get('/api/auth/sessions') });
+  const editor = useEditor();
+  const unlock = useUnlock();
+  const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => get('/api/auth/sessions'), enabled: editor.unlocked });
+  const server = useQuery({ queryKey: ['server'], queryFn: () => get('/api/settings/server'), enabled: editor.unlocked });
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
   return (
     <div className="settings-sec">
+      <p className="muted">
+        Anyone with the link can browse. Changing the shared artist list, interests, places, schedule, notifications, imports, research tokens or shared listings needs the editor passphrase, entered once per device.
+      </p>
       <section className="card">
-        <h2 className="side-title">Signed-in devices</h2>
-        <ul className="plain-list">
-          {(sessions.data?.sessions ?? []).map((s: any) => (
-            <li key={s.id}>
-              {s.current && <Badge tone="ok">This device</Badge>} <span className="small">{(s.user_agent ?? 'Unknown device').slice(0, 80)}</span>
-              <div className="muted small">
-                Last active {relative(s.last_seen_at)} · expires {stamp(s.expires_at)}
-                {!s.current && (
-                  <button
-                    type="button"
-                    className="btn btn-link small"
-                    onClick={async () => {
-                      await api('DELETE', `/api/auth/sessions/${s.id}`);
-                      sessions.refetch();
-                    }}
-                  >
-                    Sign out
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
+        <p>
+          {editor.unlocked ? <Badge tone="ok">Editing unlocked on this device</Badge> : <Badge tone="neutral">Editing locked on this device</Badge>}{' '}
+          {!editor.configured && <span className="small warn-text">No passphrase is set on the server yet (EDITOR_PASSWORD).</span>}
+        </p>
+        <LockButton />
+        {!editor.unlocked && editor.configured && (
+          <button type="button" className="btn btn-primary" onClick={unlock}>
+            Unlock editing
+          </button>
+        )}
       </section>
-      <section className="card">
-        <h2 className="side-title">Change password</h2>
-        <form
-          className="form"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            try {
-              await api('POST', '/api/auth/password', { current: cur, next });
-              toast('Password changed; other devices were signed out');
-              setCur('');
-              setNext('');
-              sessions.refetch();
-            } catch (x) {
-              toast(errorMessage(x), 'error');
-            }
-          }}
-        >
-          <Field label="Current password">
-            <input type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} required />
-          </Field>
-          <Field label="New password" hint="At least 10 characters">
-            <input type="password" autoComplete="new-password" minLength={10} value={next} onChange={(e) => setNext(e.target.value)} required />
-          </Field>
-          <button className="btn btn-primary">Change password</button>
-        </form>
-      </section>
-      <button
-        type="button"
-        className="btn btn-ghost"
-        onClick={async () => {
-          await api('POST', '/api/auth/logout', {});
-          window.dispatchEvent(new Event('quartet:signed-out'));
-          nav('/');
-        }}
-      >
-        Sign out
-      </button>
+      {editor.unlocked && (
+        <>
+          <section className="card">
+            <h2 className="side-title">Unlocked devices</h2>
+            <ul className="plain-list">
+              {(sessions.data?.sessions ?? []).map((s: any) => (
+                <li key={s.id}>
+                  {s.current && <Badge tone="ok">This device</Badge>} <span className="small">{(s.user_agent ?? 'Unknown device').slice(0, 80)}</span>
+                  <div className="muted small">
+                    Last active {relative(s.last_seen_at)} · expires {stamp(s.expires_at)}
+                    {!s.current && (
+                      <button
+                        type="button"
+                        className="btn btn-link small"
+                        onClick={async () => {
+                          await api('DELETE', `/api/auth/sessions/${s.id}`);
+                          sessions.refetch();
+                        }}
+                      >
+                        Lock
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section className="card">
+            <h2 className="side-title">Change the editor passphrase</h2>
+            {server.data?.editor_password_from_env && <p className="small warn-text">The server sets the passphrase from EDITOR_PASSWORD at start-up; change it there, or a restart will restore the old one.</p>}
+            <form
+              className="form"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await api('POST', '/api/auth/password', { current: cur, next });
+                  toast('Passphrase changed; other devices were locked');
+                  setCur('');
+                  setNext('');
+                  sessions.refetch();
+                } catch (x) {
+                  toast(errorMessage(x), 'error');
+                }
+              }}
+            >
+              <Field label="Current passphrase">
+                <input type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} required />
+              </Field>
+              <Field label="New passphrase" hint="At least 10 characters">
+                <input type="password" autoComplete="new-password" minLength={10} value={next} onChange={(e) => setNext(e.target.value)} required />
+              </Field>
+              <button className="btn btn-primary">Change passphrase</button>
+            </form>
+          </section>
+        </>
+      )}
     </div>
   );
 }
 
+function SharedNote() {
+  const editor = useEditor();
+  return editor.unlocked ? (
+    <p className="small muted">Shared by all your devices and used by scheduled research.</p>
+  ) : (
+    <EditingRequired what="change these shared settings" />
+  );
+}
+
+function SaveButton({ onClick, label }: { onClick: () => void; label: string }) {
+  const editor = useEditor();
+  const unlock = useUnlock();
+  return (
+    <button type="button" className="btn btn-primary" onClick={editor.unlocked ? onClick : unlock}>
+      {editor.unlocked ? label : 'Unlock to save'}
+    </button>
+  );
+}
+
 export function SettingsPage() {
-  const { section = 'interests' } = useParams();
+  const { section = 'device' } = useParams();
   return (
     <div className="page">
       <PageHeader title="Settings" />
       <div className="settings">
         <nav className="settings-nav" aria-label="Settings sections">
           {SECTIONS.map(([k, l]) => (
-            <NavLink key={k} to={`/settings/${k}`} className={({ isActive }) => (isActive || (k === 'interests' && section === 'interests') ? 'active' : '')}>
+            <NavLink key={k} to={`/settings/${k}`} className={({ isActive }) => (isActive || (k === 'device' && section === 'device') ? 'active' : '')}>
               {l}
             </NavLink>
           ))}
         </nav>
         <div className="settings-body">
           <h2 className="settings-title">{SECTIONS.find(([k]) => k === section)?.[1]}</h2>
+          {section === 'device' && <Device />}
           {section === 'interests' && <Interests />}
           {section === 'places' && <Places />}
           {section === 'notifications' && <Notifications />}
           {section === 'research' && <Research />}
-          {section === 'data' && <Data />}
-          {section === 'account' && <Account />}
+          {section === 'editing' && <Editing />}
           <ErrorNote error={null} />
         </div>
       </div>

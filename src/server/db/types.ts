@@ -451,7 +451,15 @@ export interface NotificationDeliveriesTable {
   attempted_at: Text;
 }
 
+export interface PriorityEventsTable {
+  device_id: Text;
+  event_id: Text;
+  status: Text; // going | booked
+  updated_at: Text;
+}
+
 export interface Database {
+  priority_events: PriorityEventsTable;
   users: UsersTable;
   sessions: SessionsTable;
   api_tokens: ApiTokensTable;
@@ -478,12 +486,6 @@ export interface Database {
   app_settings: AppSettingsTable;
   user_preferences: UserPreferencesTable;
   watchlist: WatchlistTable;
-  user_event_state: UserEventStateTable;
-  bookings: BookingsTable;
-  personal_plans: PersonalPlansTable;
-  clash_reviews: ClashReviewsTable;
-  feedback: FeedbackTable;
-  ibiza_stays: IbizaStaysTable;
   feed_items: FeedItemsTable;
   notification_deliveries: NotificationDeliveriesTable;
 }

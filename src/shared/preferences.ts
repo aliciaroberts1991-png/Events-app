@@ -26,13 +26,12 @@ export const preferencesSchema = z.object({
           mode: z.enum(['immediate', 'daily']).default('daily'),
           dailyTime: z.string().regex(/^\d{2}:\d{2}$/).default('08:00'),
           types: z.array(z.enum(FEED_TYPES)).default([...FEED_TYPES]),
-          savedOnly: z.boolean().default(false),
         })
-        .default({ enabled: false, address: null, mode: 'daily', dailyTime: '08:00', types: [...FEED_TYPES], savedOnly: false }),
+        .default({ enabled: false, address: null, mode: 'daily', dailyTime: '08:00', types: [...FEED_TYPES] }),
     })
     .default({
       inApp: {},
-      email: { enabled: false, address: null, mode: 'daily', dailyTime: '08:00', types: [...FEED_TYPES], savedOnly: false },
+      email: { enabled: false, address: null, mode: 'daily', dailyTime: '08:00', types: [...FEED_TYPES] },
     }),
   schedule: z
     .object({

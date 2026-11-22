@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { DateTime } from 'luxon';
 import { Palmtree, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -6,7 +6,8 @@ import { Link } from 'react-router-dom';
 import { WEEKDAYS } from '../../shared/taxonomy';
 import { EventCard } from '../components/EventCard';
 import { Badge, Empty, ErrorNote, PageHeader, Segmented, Spinner } from '../components/ui';
-import { api, errorMessage, get, qs } from '../lib/api';
+import { get, qs } from '../lib/api';
+import { deleteStay, saveStay, useLocal } from '../lib/local';
 import { fullDay } from '../lib/format';
 import { useToast, useUrlState } from '../lib/hooks';
 
@@ -20,9 +21,9 @@ export function IbizaPage() {
   const now = DateTime.now();
   const defaultSeason = String(now.month >= 10 ? now.year + 1 : now.year);
   const [s, set] = useUrlState({ season: defaultSeason, tab: 'parties', from: '', to: '' });
-  const qc = useQueryClient();
   const toast = useToast();
-  const stays = useQuery({ queryKey: ['stays'], queryFn: () => get('/api/ibiza/stays') });
+  const local = useLocal();
+
   const q = useQuery({
     queryKey: ['ibiza', s.season, s.from, s.to],
     queryFn: () => get(`/api/ibiza${qs({ season: s.season, stay_from: s.from && s.to ? s.from : undefined, stay_to: s.from && s.to ? s.to : undefined })}`),
@@ -30,7 +31,7 @@ export function IbizaPage() {
   });
   const d = q.data;
   const seasons = [now.year - 1, now.year, now.year + 1, now.year + 2].map(String);
-  const parties = d?.stay_parties ?? d?.parties ?? [];
+  const parties = (d?.stay_parties ?? d?.parties ?? []).filter((e: any) => !local.states[e.id]?.hidden);
 
   return (
     <div className="page">
@@ -67,14 +68,9 @@ export function IbizaPage() {
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                onClick={async () => {
-                  try {
-                    await api('POST', '/api/ibiza/stays', { start_date: s.from, end_date: s.to });
-                    toast('Stay saved');
-                    qc.invalidateQueries({ queryKey: ['stays'] });
-                  } catch (e) {
-                    toast(errorMessage(e), 'error');
-                  }
+                onClick={() => {
+                  saveStay({ label: null, start_date: s.from, end_date: s.to });
+                  toast('Stay saved on this device');
                 }}
               >
                 Save these dates
@@ -85,9 +81,9 @@ export function IbizaPage() {
             </>
           )}
         </div>
-        {(stays.data?.stays ?? []).length > 0 && (
+        {local.stays.length > 0 && (
           <ul className="stay-list">
-            {stays.data.stays.map((st: any) => (
+            {local.stays.map((st) => (
               <li key={st.id}>
                 <button type="button" className="chip" onClick={() => set({ from: st.start_date, to: st.end_date, season: st.start_date.slice(0, 4) })}>
                   {st.label ? `${st.label}: ` : ''}
@@ -97,10 +93,7 @@ export function IbizaPage() {
                   type="button"
                   className="icon-btn"
                   aria-label="Delete saved stay"
-                  onClick={async () => {
-                    await api('DELETE', `/api/ibiza/stays/${st.id}`);
-                    qc.invalidateQueries({ queryKey: ['stays'] });
-                  }}
+                  onClick={() => deleteStay(st.id)}
                 >
                   <Trash2 size={15} aria-hidden />
                 </button>

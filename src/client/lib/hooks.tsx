@@ -1,8 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, errorMessage, get } from './api';
-import type { EventState, Meta } from './types';
+import { demotedScore } from '../../shared/local-data';
+import { get } from './api';
+import { setEditorUnlocked, setEventState, snapshotOf, stateOf, useLocal } from './local';
+import type { EventSummary, Meta } from './types';
 
 export function useMeta() {
   return useQuery({ queryKey: ['meta'], queryFn: () => get<Meta>('/api/meta'), staleTime: 5 * 60_000 });
@@ -19,21 +21,44 @@ export function useHubNames() {
   return names;
 }
 
-/** Saving any personal change refreshes every view that shows it. */
-export function useEventState(eventId: string) {
-  const qc = useQueryClient();
-  const toast = useToast();
-  return useMutation({
-    mutationFn: (patch: Partial<Pick<EventState, 'favourite' | 'hidden' | 'plan_status' | 'occurrence_id' | 'notes'>> & { version?: number }) =>
-      api('PUT', `/api/events/${eventId}/state`, patch),
-    onSuccess: () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'meta' }),
-    onError: (e) => toast(errorMessage(e), 'error'),
-  });
+/** Editing (central data) is unlocked on this device. */
+export function useEditor() {
+  const q = useQuery({ queryKey: ['auth'], queryFn: () => get('/api/auth/state'), staleTime: 60_000 });
+  const unlocked = !!q.data?.editor;
+  useEffect(() => setEditorUnlocked(unlocked), [unlocked]);
+  return { unlocked, configured: !!q.data?.editing_configured, loading: q.isLoading };
 }
 
-export function useInvalidateAll() {
-  const qc = useQueryClient();
-  return () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'meta' || true });
+export function usePublicPrefs() {
+  return useQuery({ queryKey: ['preferences'], queryFn: () => get('/api/preferences'), staleTime: 60_000 });
+}
+
+/** This device's state for an event, and a setter that also stores a readable snapshot. */
+export function useEventState(e: { id: string } & Partial<Pick<EventSummary, 'title' | 'start_local' | 'end_local' | 'timezone' | 'city' | 'venue'>>) {
+  const d = useLocal();
+  const state = stateOf(d, e.id);
+  const set = (patch: Parameters<typeof setEventState>[1]) =>
+    setEventState(e.id, patch, e.title && e.start_local && e.timezone ? snapshotOf({ title: e.title, start_local: e.start_local, end_local: e.end_local ?? null, timezone: e.timezone, city: e.city ?? null, venue: e.venue ?? null }) : undefined);
+  return { state, set, bookings: d.bookings.filter((b) => b.target === e.id) };
+}
+
+/**
+ * Applies this device's choices to a central list: hidden events are removed and
+ * "fewer like this" feedback can drop an item out of Highlights.
+ */
+export function useDeviceView(items: EventSummary[] | undefined, mode: string, counts?: { highlights: number; all: number }) {
+  const d = useLocal();
+  const prefs = usePublicPrefs();
+  const threshold = prefs.data?.data.highlightThreshold ?? 55;
+  const list = items ?? [];
+  const hidden = list.filter((e) => stateOf(d, e.id).hidden);
+  const demoted = list.filter((e) => e.highlight && !e.artists.some((a) => a.followed) && d.feedback.length && demotedScore(e, d.feedback) < threshold);
+  const visible = list.filter((e) => !hidden.includes(e) && !(mode === 'highlights' && demoted.includes(e)));
+  const adjusted = counts && {
+    highlights: Math.max(0, counts.highlights - (mode === 'highlights' ? hidden.length + demoted.filter((e) => !hidden.includes(e)).length : 0)),
+    all: Math.max(0, counts.all - (mode === 'all' ? hidden.length : 0)),
+  };
+  return { visible, hiddenCount: hidden.length, counts: adjusted };
 }
 
 /** Read and write a set of filters in the URL so views are shareable and Back works. */

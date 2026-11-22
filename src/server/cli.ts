@@ -6,7 +6,7 @@ import readline from 'node:readline/promises';
 import { loadConfig } from './config';
 import { migrateToLatest, openDatabase } from './db';
 import type { AppContext } from './context';
-import { createApiToken, createUser, hashPassword } from './auth';
+import { createApiToken, setEditorPassword, siteId } from './auth';
 import { loadDemo, removeDemo, seedWatchlist } from './services/seed';
 import { nowIso } from './util';
 
@@ -36,18 +36,13 @@ try {
     case 'migrate':
       console.log('Database is up to date.');
       break;
+    case 'editor-password':
     case 'owner': {
-      const email = arg('email') ?? (await prompt('Email: '));
-      const password = arg('password') ?? process.env.OWNER_PASSWORD ?? (await prompt('Password (min 10 characters): '));
-      const existing = await ctx.db.selectFrom('users').selectAll().where('email', '=', email.toLowerCase()).executeTakeFirst();
-      if (existing) {
-        await ctx.db.updateTable('users').set({ password_hash: await hashPassword(password), updated_at: nowIso() }).where('id', '=', existing.id).execute();
-        console.log(`Password updated for ${email}.`);
-      } else {
-        const id = await createUser(ctx, email, password, 'Owner');
-        await seedWatchlist(ctx, id);
-        console.log(`Owner account created for ${email}.`);
-      }
+      const password = arg('password') ?? process.env.EDITOR_PASSWORD ?? (await prompt('New editor passphrase (min 10 characters): '));
+      await siteId(ctx);
+      await setEditorPassword(ctx, password);
+      await seedWatchlist(ctx, await siteId(ctx));
+      console.log('Editor passphrase set. Unlock editing in the app with it (Settings → Editing).');
       break;
     }
     case 'token': {
@@ -78,7 +73,7 @@ try {
       break;
     }
     default:
-      console.log('Commands: migrate | owner --email … [--password …] | token [--name …] | demo-load | demo-remove | backup [--dir …]');
+      console.log('Commands: migrate | editor-password [--password …] | token [--name …] | demo-load | demo-remove | backup [--dir …]');
   }
 } finally {
   await close();

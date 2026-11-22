@@ -1,12 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { DateTime } from 'luxon';
-import { Link2, Plus, Trash2 } from 'lucide-react';
+import { Link2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { CATEGORY_GROUPS, COUNTRY_NAMES, GENRES } from '../../shared/taxonomy';
-import { ErrorNote, Field, PageHeader, Segmented, Spinner } from '../components/ui';
+import { CATEGORY_GROUPS, COUNTRY_NAMES, GENRES, PLAN_STATUS_LABELS } from '../../shared/taxonomy';
+import { PlanChip } from '../components/EventCard';
+import { EditingRequired } from '../components/Editor';
+import { dayLabel, money } from '../lib/format';
+import { deleteBooking, deleteEntry, linkEntry, saveBooking, saveEntry, setEventState, snapshotOf, useLocal } from '../lib/local';
+import { NotesBox } from './EventDetail';
+import { Badge, Field, PageHeader, Segmented, Spinner } from '../components/ui';
 import { api, errorMessage, get } from '../lib/api';
-import { useToast } from '../lib/hooks';
+import { useEditor, useToast } from '../lib/hooks';
 import { PlanForm } from './Calendar';
 
 const COUNTRY_TZ: Record<string, string> = { SK: 'Europe/Bratislava', AT: 'Europe/Vienna', HU: 'Europe/Budapest', CZ: 'Europe/Prague', ES: 'Europe/Madrid', GB: 'Europe/London', DE: 'Europe/Berlin', PT: 'Europe/Lisbon', HR: 'Europe/Zagreb', PL: 'Europe/Warsaw', NL: 'Europe/Amsterdam', BE: 'Europe/Brussels', FR: 'Europe/Paris', IT: 'Europe/Rome', IE: 'Europe/Dublin', CH: 'Europe/Zurich', SI: 'Europe/Ljubljana' };
@@ -367,87 +371,124 @@ export function EventForm({ eventId }: { eventId?: string }) {
   );
 }
 
-export function QuickBookingForm() {
+/** An event kept only on this device — for example a show you have already booked. */
+export function EntryForm({ withBooking, entryId }: { withBooking: boolean; entryId?: string }) {
   const [params] = useSearchParams();
   const nav = useNavigate();
-  const qc = useQueryClient();
   const toast = useToast();
+  const d = useLocal();
+  const existing = entryId ? d.entries.find((x) => x.id === entryId) : undefined;
   const watch = useQuery({ queryKey: ['watchlist'], queryFn: () => get('/api/watchlist') });
+  const presetArtist = (watch.data?.artists ?? []).find((a: any) => a.artist_id === params.get('artist'));
   const [v, setV] = useState({
-    artist_id: params.get('artist') ?? '',
-    artist_name: '',
-    title: '',
-    format: 'unknown',
-    date: '',
-    time: '',
-    venue_name: '',
-    city: '',
-    country: 'SK',
+    artist: existing?.artist ?? '',
+    title: existing?.title ?? '',
+    format: existing?.format ?? 'unknown',
+    date: existing?.start.slice(0, 10) ?? '',
+    time: existing?.start.slice(11, 16) ?? '',
+    end_time: existing?.end && existing.end.length === 5 ? existing.end : existing?.end?.slice(11, 16) ?? '',
+    venue: existing?.venue ?? '',
+    city: existing?.city ?? '',
+    country: existing?.country ?? 'SK',
+    source_url: existing?.source_url ?? '',
+    status: 'going',
     provider: '',
     amount: '',
     currency: 'EUR',
     reference: '',
     link: '',
-    source_url: '',
     notes: '',
   });
-  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (presetArtist && !v.artist) setV((cur) => ({ ...cur, artist: presetArtist.name }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetArtist?.name]);
+  const [link, setLink] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
   const upd = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setV({ ...v, [k]: e.target.value });
   return (
     <form
       className="form editor"
-      onSubmit={async (e) => {
+      onSubmit={(e) => {
         e.preventDefault();
-        setErr(null);
-        try {
-          const r = await api('POST', '/api/bookings/quick', {
-            artist_id: v.artist_id || undefined,
-            artist_name: !v.artist_id && v.artist_name ? v.artist_name : undefined,
-            title: v.title || undefined,
-            format: v.format,
-            date: v.date,
-            time: v.time || null,
-            venue_name: v.venue_name || null,
-            city: v.city,
-            country: v.country,
-            timezone: COUNTRY_TZ[v.country],
-            categories: ['concert'],
-            source_url: v.source_url || null,
-            notes: v.notes || undefined,
-            booking: {
-              provider: v.provider || null,
-              amount: v.amount ? Number(v.amount) : null,
-              currency: v.currency,
-              reference: v.reference || null,
-              links: v.link ? [v.link] : [],
-            },
-          });
-          toast('Booking added to your calendar');
-          qc.invalidateQueries();
-          nav(`/events/${r.id}`);
-        } catch (x) {
-          setErr(errorMessage(x));
+        const title = v.title || v.artist;
+        const entry = {
+          id: existing?.id,
+          title,
+          start: v.time ? `${v.date}T${v.time}` : v.date,
+          end: v.end_time || null,
+          timezone: COUNTRY_TZ[v.country] ?? 'Europe/Bratislava',
+          venue: v.venue || null,
+          city: v.city || null,
+          country: v.country || null,
+          artist: v.artist || null,
+          format: v.format === 'unknown' ? null : v.format,
+          source_url: v.source_url || null,
+        };
+        const id = saveEntry(entry, withBooking ? 'booked' : (v.status as 'going'));
+        if (withBooking) {
+          saveBooking({ target: id, provider: v.provider || null, amount: v.amount ? Number(v.amount) : null, currency: v.currency, reference: v.reference || null, quantity: null, ticket_type: null, links: v.link ? [v.link] : [], notes: null }, true);
         }
+        if (v.notes) setEventState(id, { notes: v.notes });
+        toast(existing ? 'Saved on this device' : withBooking ? 'Booking saved on this device' : 'Saved on this device');
+        nav(`/entries/${id}`);
       }}
     >
-      <fieldset className="card">
-        <legend>What you booked</legend>
-        <div className="form-row">
-          <Field label="Artist">
-            <select value={v.artist_id} onChange={upd('artist_id')}>
-              <option value="">Someone else / not an artist</option>
-              {(watch.data?.artists ?? []).map((a: any) => (
-                <option key={a.artist_id} value={a.artist_id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {!v.artist_id && (
-            <Field label="Artist name (optional)">
-              <input value={v.artist_name} onChange={upd('artist_name')} />
-            </Field>
+      {!existing && (
+        <fieldset className="card">
+          <legend>Start from a link (optional)</legend>
+          <div className="inline-form">
+            <label className="grow">
+              <span className="sr-only">Event page link</span>
+              <input type="url" placeholder="https://…" value={link} onChange={(e) => setLink(e.target.value)} />
+            </label>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={!link}
+              onClick={async () => {
+                try {
+                  const r = await api('POST', '/api/events/extract', { url: link });
+                  setMsg(r.message);
+                  const dr = r.draft ?? {};
+                  setV((cur) => ({
+                    ...cur,
+                    title: dr.title ?? cur.title,
+                    date: dr.start?.slice(0, 10) ?? cur.date,
+                    time: dr.start && dr.start.length > 10 ? dr.start.slice(11, 16) : cur.time,
+                    end_time: dr.end && dr.end.length > 10 ? dr.end.slice(11, 16) : cur.end_time,
+                    venue: dr.venue?.name ?? cur.venue,
+                    city: dr.venue?.city ?? cur.city,
+                    country: dr.venue?.country ?? cur.country,
+                    artist: dr.lineup?.[0]?.name ?? cur.artist,
+                    source_url: link,
+                  }));
+                } catch (x) {
+                  setMsg(errorMessage(x));
+                }
+              }}
+            >
+              <Link2 size={16} aria-hidden /> Read details
+            </button>
+          </div>
+          {msg && (
+            <p className="small" role="status">
+              {msg}
+            </p>
           )}
+        </fieldset>
+      )}
+      <fieldset className="card">
+        <legend>{withBooking ? 'What you booked' : 'Event'}</legend>
+        <div className="form-row">
+          <Field label="Artist (optional)">
+            <input list="followed-artists" value={v.artist} onChange={upd('artist')} />
+            <datalist id="followed-artists">
+              {(watch.data?.artists ?? []).map((a: any) => (
+                <option key={a.artist_id} value={a.name} />
+              ))}
+            </datalist>
+          </Field>
           <Field label="Format">
             <select value={v.format} onChange={upd('format')}>
               <option value="unknown">Not sure</option>
@@ -457,19 +498,22 @@ export function QuickBookingForm() {
           </Field>
         </div>
         <Field label="Event title" hint="Leave empty to use the artist’s name">
-          <input value={v.title} onChange={upd('title')} required={!v.artist_id && !v.artist_name} />
+          <input value={v.title} onChange={upd('title')} required={!v.artist} />
         </Field>
         <div className="form-row">
           <Field label="Date">
-            <input type="date" required value={v.date} onChange={upd('date')} min={DateTime.now().minus({ years: 2 }).toISODate()!} />
+            <input type="date" required value={v.date} onChange={upd('date')} />
           </Field>
           <Field label="Start time (if known)">
             <input type="time" value={v.time} onChange={upd('time')} />
           </Field>
+          <Field label="Finish time" hint="Earlier than the start means the next morning">
+            <input type="time" value={v.end_time} onChange={upd('end_time')} />
+          </Field>
         </div>
         <div className="form-row">
           <Field label="Venue">
-            <input value={v.venue_name} onChange={upd('venue_name')} />
+            <input value={v.venue} onChange={upd('venue')} />
           </Field>
           <Field label="Town or city">
             <input required value={v.city} onChange={upd('city')} />
@@ -484,91 +528,205 @@ export function QuickBookingForm() {
             </select>
           </Field>
         </div>
-      </fieldset>
-      <fieldset className="card">
-        <legend>Booking details (optional)</legend>
-        <div className="form-row">
-          <Field label="Ticket provider">
-            <input value={v.provider} onChange={upd('provider')} />
-          </Field>
-          <Field label="Booking reference">
-            <input value={v.reference} onChange={upd('reference')} />
-          </Field>
-        </div>
-        <div className="form-row">
-          <Field label="Amount paid">
-            <input inputMode="decimal" value={v.amount} onChange={upd('amount')} />
-          </Field>
-          <Field label="Currency">
-            <select value={v.currency} onChange={upd('currency')}>
-              {['EUR', 'CZK', 'HUF', 'GBP', 'CHF', 'PLN'].map((c) => (
-                <option key={c}>{c}</option>
-              ))}
+        {!withBooking && !existing && (
+          <Field label="Status">
+            <select value={v.status} onChange={upd('status')}>
+              <option value="interested">Interested</option>
+              <option value="going">Going</option>
             </select>
           </Field>
-        </div>
-        <Field label="Booking or e-ticket link">
-          <input type="url" value={v.link} onChange={upd('link')} />
-        </Field>
+        )}
         <Field label="Event page link">
           <input type="url" value={v.source_url} onChange={upd('source_url')} />
         </Field>
+      </fieldset>
+      {withBooking && (
+        <fieldset className="card">
+          <legend>Booking details (optional)</legend>
+          <div className="form-row">
+            <Field label="Ticket provider">
+              <input value={v.provider} onChange={upd('provider')} />
+            </Field>
+            <Field label="Booking reference">
+              <input value={v.reference} onChange={upd('reference')} />
+            </Field>
+          </div>
+          <div className="form-row">
+            <Field label="Amount paid">
+              <input inputMode="decimal" value={v.amount} onChange={upd('amount')} />
+            </Field>
+            <Field label="Currency">
+              <select value={v.currency} onChange={upd('currency')}>
+                {['EUR', 'CZK', 'HUF', 'GBP', 'CHF', 'PLN'].map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <Field label="Booking or e-ticket link">
+            <input type="url" value={v.link} onChange={upd('link')} />
+          </Field>
+        </fieldset>
+      )}
+      {!existing && (
         <Field label="Notes">
           <textarea rows={2} value={v.notes} onChange={upd('notes')} />
         </Field>
-      </fieldset>
-      {err && <p className="error-note" role="alert">{err}</p>}
+      )}
+      <p className="muted small">Saved on this device only. To have it on your other device too, use Settings → This device → Export, then import it there.</p>
       <div className="form-actions">
-        <button className="btn btn-primary">Save booking</button>
+        <button className="btn btn-primary">{existing ? 'Save changes' : withBooking ? 'Save booking' : 'Save'}</button>
       </div>
     </form>
   );
 }
 
 export function AddPage() {
-  const { mode = 'event' } = useParams();
+  const { mode = 'entry' } = useParams();
   const nav = useNavigate();
-  const qc = useQueryClient();
+  const editor = useEditor();
   return (
     <div className="page narrow">
-      <PageHeader title="Add" sub="Your own entries stay private and are never changed by research updates.">
+      <PageHeader title="Add">
         <Segmented
           label="What to add"
           value={mode}
           onChange={(v) => nav(`/add/${v}`, { replace: true })}
           options={[
-            { value: 'event', label: 'An event' },
+            { value: 'entry', label: 'An event for me' },
             { value: 'booking', label: 'A booking I already have' },
             { value: 'plan', label: 'A personal plan' },
+            { value: 'listing', label: 'A shared listing' },
           ]}
         />
       </PageHeader>
-      {mode === 'event' && <EventForm />}
-      {mode === 'booking' && <QuickBookingForm />}
+      {mode === 'entry' && <EntryForm withBooking={false} />}
+      {mode === 'booking' && <EntryForm withBooking />}
       {mode === 'plan' && (
         <div className="card">
-          <PlanForm
-            onDone={() => {
-              qc.invalidateQueries();
-              nav('/calendar?tab=plans');
-            }}
-          />
+          <PlanForm onDone={() => nav('/plans?tab=plans')} />
         </div>
       )}
+      {mode === 'listing' &&
+        (editor.unlocked ? (
+          <>
+            <p className="muted">Shared listings appear in Discover on every device. Research updates never change them.</p>
+            <EventForm />
+          </>
+        ) : (
+          <EditingRequired what="add a shared listing" />
+        ))}
     </div>
   );
 }
 
 export function EditEventPage() {
   const { id } = useParams();
+  const editor = useEditor();
   return (
     <div className="page narrow">
       <p className="crumbs">
         <Link to={`/events/${id}`}>Back to event</Link>
       </p>
-      <PageHeader title="Edit your event" />
-      <ErrorNote error={null} />
-      <EventForm eventId={id} />
+      <PageHeader title="Edit shared listing" />
+      {editor.unlocked ? <EventForm eventId={id} /> : <EditingRequired what="edit shared listings" />}
+    </div>
+  );
+}
+
+/** One of your own entries (this device). */
+export function EntryPage() {
+  const { id = '' } = useParams();
+  const nav = useNavigate();
+  const d = useLocal();
+  const en = d.entries.find((x) => x.id === id);
+  const st = d.states[id];
+  const [editing, setEditing] = useState(false);
+  const matches = useQuery({
+    queryKey: ['entry-matches', en?.start.slice(0, 10), en?.title],
+    queryFn: () => get(`/api/events?mode=all&scope=any&range=custom&from=${en!.start.slice(0, 10)}&to=${en!.start.slice(0, 10)}&limit=50`),
+    enabled: !!en,
+  });
+  if (!en) return <div className="page"><p>That entry is not on this device.</p><Link to="/plans">My plans</Link></div>;
+  const words = new Set((en.title + ' ' + (en.artist ?? '')).toLowerCase().split(/\W+/).filter((w) => w.length > 2));
+  const candidates = (matches.data?.items ?? []).filter((e: any) => [e.title, ...e.artists.map((a: any) => a.name)].join(' ').toLowerCase().split(/\W+/).some((w: string) => words.has(w)));
+  const bookings = d.bookings.filter((b) => b.target === id);
+  if (editing) return <div className="page narrow"><PageHeader title="Edit your entry" /><EntryForm withBooking={false} entryId={id} /></div>;
+  return (
+    <div className="page narrow">
+      <p className="crumbs">
+        <Link to="/plans">My plans</Link>
+      </p>
+      <PageHeader title={en.title} sub="Your own entry, saved on this device." actions={<Badge tone="neutral">Your entry</Badge>} />
+      <dl className="kv">
+        <div className="kv-row"><dt>When</dt><dd>{dayLabel(en.start)}{en.start.length > 10 ? `, ${en.start.slice(11, 16)}` : ''}{en.end ? ` – ${en.end.length === 5 ? en.end : en.end.slice(11, 16)}` : ''} <span className="muted">({en.timezone})</span></dd></div>
+        <div className="kv-row"><dt>Where</dt><dd>{[en.venue, en.city, en.country].filter(Boolean).join(', ')}</dd></div>
+        {en.artist && <div className="kv-row"><dt>Artist</dt><dd>{en.artist}{en.format ? ` · ${en.format === 'dj_set' ? 'DJ set' : en.format === 'live' ? 'Live show' : en.format}` : ''}</dd></div>}
+        {en.source_url && <div className="kv-row"><dt>Link</dt><dd><a href={en.source_url} target="_blank" rel="noreferrer">Event page</a></dd></div>}
+        <div className="kv-row"><dt>Status</dt><dd><PlanChip status={st?.plan_status ?? 'none'} /></dd></div>
+      </dl>
+      <div className="plan-buttons" role="radiogroup" aria-label="Planning status">
+        {(['interested', 'going', 'booked'] as const).map((s) => (
+          <button key={s} type="button" role="radio" aria-checked={st?.plan_status === s} className={`plan-btn plan-${s} ${st?.plan_status === s ? 'on' : ''}`} onClick={() => setEventState(id, { plan_status: s })}>
+            {PLAN_STATUS_LABELS[s]}
+          </button>
+        ))}
+      </div>
+      <NotesBox value={st?.notes ?? null} onSave={(v) => setEventState(id, { notes: v })} />
+      {bookings.length > 0 && (
+        <ul className="booking-list">
+          {bookings.map((b) => (
+            <li key={b.id}>
+              <div>
+                <strong>{b.provider ?? 'Booking'}</strong> {money(b.amount, b.currency)}
+                {b.reference && <div className="small">Ref: {b.reference}</div>}
+              </div>
+              <button type="button" className="icon-btn" aria-label="Delete booking" onClick={() => confirm('Delete this booking record?') && deleteBooking(b.id)}>
+                <Trash2 size={15} aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {candidates.length > 0 && (
+        <section className="card">
+          <h2 className="side-title">Is this one of these listings?</h2>
+          <p className="small">Linking moves your status, notes and bookings onto the listing, so you also get its updates and details.</p>
+          <ul className="plain-list">
+            {candidates.map((c: any) => (
+              <li key={c.id}>
+                <Link to={`/events/${c.id}`}>{c.title}</Link> <span className="muted small">· {c.city}</span>{' '}
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    linkEntry(id, c.id, snapshotOf(c));
+                    nav(`/events/${c.id}`, { replace: true });
+                  }}
+                >
+                  Use this listing
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <div className="btn-row">
+        <button type="button" className="btn btn-ghost" onClick={() => setEditing(true)}>
+          <Pencil size={16} aria-hidden /> Edit
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost danger"
+          onClick={() => {
+            if (!confirm('Delete this entry and its bookings from this device?')) return;
+            deleteEntry(id);
+            nav('/plans');
+          }}
+        >
+          <Trash2 size={16} aria-hidden /> Delete
+        </button>
+      </div>
     </div>
   );
 }

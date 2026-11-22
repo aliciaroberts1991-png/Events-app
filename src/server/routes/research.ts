@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { runCompleteInput, runCreateInput, runFailInput } from '../../shared/research-schema';
 import { CATEGORIES, GENRES, HUBS, IBIZA } from '../../shared/taxonomy';
-import { authenticateToken } from '../auth';
+import { authenticateToken, siteId } from '../auth';
 import type { AppContext } from '../context';
 import { HttpError, nowIso, parseJson } from '../util';
 import { getEventDetail, hydrate } from '../services/events';
@@ -20,11 +20,7 @@ function parse<T extends z.ZodTypeAny>(schema: T, data: unknown): z.infer<T> {
   return r.data;
 }
 
-async function ownerId(ctx: AppContext) {
-  const u = await ctx.db.selectFrom('users').select('id').orderBy('created_at').executeTakeFirst();
-  if (!u) throw new HttpError(409, 'No owner account exists yet');
-  return u.id;
-}
+const ownerId = (ctx: AppContext) => siteId(ctx);
 
 export async function researchRoutes(app: FastifyInstance, ctx: AppContext) {
   app.get('/api/research/v1/openapi.json', async (req) => buildOpenApi(ctx, req));
@@ -117,8 +113,8 @@ export async function researchRoutes(app: FastifyInstance, ctx: AppContext) {
       const d = await getEventDetail(ctx, uid, (req.params as { id: string }).id);
       if (d.origin === 'manual') throw new HttpError(404, 'Event not found');
       // Personal fields are never exposed to the research API.
-      const { state, bookings, possible_matches, reasons, score, highlight, ...rest } = d;
-      void state; void bookings; void possible_matches; void reasons; void score; void highlight;
+      const { reasons, score, highlight, ...rest } = d;
+      void reasons; void score; void highlight;
       return rest;
     });
 
@@ -135,8 +131,11 @@ export async function researchRoutes(app: FastifyInstance, ctx: AppContext) {
         .where('archived_at', 'is', null)
         .where('span_end_utc', '>=', nowIso2)
         .execute();
-      const states = await ctx.db.selectFrom('user_event_state').select(['event_id', 'plan_status', 'favourite']).where('user_id', '=', uid).execute();
-      const stateMap = new Map(states.map((s) => [s.event_id, s]));
+      // Ids that devices shared as Going/Booked (no personal details).
+      const shared = await ctx.db.selectFrom('priority_events').select(['event_id', 'status']).execute();
+      const stateMap = new Map<string, { plan_status: string }>();
+      for (const sh of shared) if (stateMap.get(sh.event_id)?.plan_status !== 'booked') stateMap.set(sh.event_id, { plan_status: sh.status });
+      void uid;
       const staleCut = new Date(now.getTime() - q.stale_hours * 3600_000).toISOString();
       const scored = rows
         .map((e) => {
@@ -147,7 +146,6 @@ export async function researchRoutes(app: FastifyInstance, ctx: AppContext) {
           const reasons: string[] = [];
           if (st?.plan_status === 'booked') (priority += 50), reasons.push('booked');
           else if (st?.plan_status === 'going') (priority += 35), reasons.push('going');
-          else if (st?.plan_status === 'interested' || st?.favourite) (priority += 15), reasons.push('saved');
           if (days < 7) (priority += 30), reasons.push('within 7 days');
           else if (days < 30) (priority += 15), reasons.push('within 30 days');
           if (saleSoon) (priority += 25), reasons.push('ticket sale approaching');

@@ -1,19 +1,24 @@
 import crypto from 'node:crypto';
 import pg from 'pg';
 import { buildApp, type BuiltApp } from '../../src/server/app';
-import { createApiToken, createUser } from '../../src/server/auth';
-import { seedWatchlist } from '../../src/server/services/seed';
+import { createApiToken, siteId } from '../../src/server/auth';
 
 /** Fixed "now": Sunday 22 November 2026, 10:00 in Bratislava. */
 export const FIXED_NOW = new Date('2026-11-22T09:00:00Z');
 
+export const PASSPHRASE = 'correct horse battery';
+
 export interface TestEnv extends BuiltApp {
   clock: { now: Date };
+  /** Editor session cookie (editing unlocked). */
   cookie: string;
   token: string;
   userId: string;
   dbUrl: string;
+  /** Requests with the editor cookie by default; pass { cookie: null } to browse anonymously. */
   api: (method: string, url: string, body?: unknown, opts?: { cookie?: string | null; csrf?: boolean }) => Promise<{ status: number; body: any; headers: Record<string, unknown> }>;
+  /** Anonymous request (no editor session). */
+  anon: (method: string, url: string, body?: unknown) => Promise<{ status: number; body: any; headers: Record<string, unknown> }>;
   research: (method: string, url: string, body?: unknown, headers?: Record<string, string>) => Promise<{ status: number; body: any }>;
   login: () => Promise<string>;
 }
@@ -31,19 +36,15 @@ export async function freshDatabaseUrl(): Promise<string> {
   return 'sqlite::memory:';
 }
 
-export async function setup(opts: { dbUrl?: string; seedOwner?: boolean } = {}): Promise<TestEnv> {
+export async function setup(opts: { dbUrl?: string; editorPassword?: string | null } = {}): Promise<TestEnv> {
   const clock = { now: new Date(FIXED_NOW) };
   const dbUrl = opts.dbUrl ?? (await freshDatabaseUrl());
   const built = await buildApp(
-    { databaseUrl: dbUrl, schedulerEnabled: true, cookieSecure: false, ownerEmail: null, ownerPassword: null, seedDemo: false, researchWebhookUrl: null, smtpUrl: null, emailFrom: null, publicUrl: 'https://quartet.example' },
+    { databaseUrl: dbUrl, schedulerEnabled: true, cookieSecure: false, ownerEmail: null, editorPassword: opts.editorPassword === undefined ? PASSPHRASE : opts.editorPassword, seedDemo: false, researchWebhookUrl: null, smtpUrl: null, emailFrom: null, publicUrl: 'https://quartet.example' },
     { now: () => clock.now },
   );
-  let userId = (await built.ctx.db.selectFrom('users').select('id').executeTakeFirst())?.id;
-  if (!userId && opts.seedOwner !== false) {
-    userId = await createUser(built.ctx, 'owner@example.com', 'correct horse battery', 'Owner');
-    await seedWatchlist(built.ctx, userId);
-  }
-  const { token } = await createApiToken(built.ctx, 'test executor', userId ?? null);
+  const userId = await siteId(built.ctx);
+  const { token } = await createApiToken(built.ctx, 'test executor', userId);
 
   const env = { ...built, clock, cookie: '', token, userId: userId!, dbUrl } as TestEnv;
   env.api = async (method, url, body, o = {}) => {
@@ -61,6 +62,7 @@ export async function setup(opts: { dbUrl?: string; seedOwner?: boolean } = {}):
     }
     return { status: res.statusCode, body: parsed, headers: res.headers };
   };
+  env.anon = (method, url, body) => env.api(method, url, body, { cookie: null });
   env.research = async (method, url, body, headers = {}) => {
     const res = await built.app.inject({
       method: method as never,
@@ -77,12 +79,12 @@ export async function setup(opts: { dbUrl?: string; seedOwner?: boolean } = {}):
     return { status: res.statusCode, body: parsed };
   };
   env.login = async () => {
-    const res = await built.app.inject({ method: 'POST', url: '/api/auth/login', headers: { 'content-type': 'application/json' }, payload: JSON.stringify({ email: 'owner@example.com', password: 'correct horse battery' }) });
-    if (res.statusCode !== 200) throw new Error(`login failed ${res.statusCode} ${res.body}`);
-    const c = res.cookies.find((x) => x.name === 'quartet_session')!;
-    return `quartet_session=${c.value}`;
+    const res = await built.app.inject({ method: 'POST', url: '/api/auth/unlock', headers: { 'content-type': 'application/json', 'x-quartet-csrf': '1' }, payload: JSON.stringify({ password: PASSPHRASE }) });
+    if (res.statusCode !== 200) throw new Error(`unlock failed ${res.statusCode} ${res.body}`);
+    const c = res.cookies.find((x) => x.name === 'quartet_editor')!;
+    return `quartet_editor=${c.value}`;
   };
-  if (userId) env.cookie = await env.login();
+  if (opts.editorPassword !== null) env.cookie = await env.login();
   return env;
 }
 

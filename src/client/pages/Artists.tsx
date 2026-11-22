@@ -6,7 +6,8 @@ import { EventCard } from '../components/EventCard';
 import { Badge, Dialog, Empty, ErrorNote, Field, PageHeader, Segmented, Spinner } from '../components/ui';
 import { api, errorMessage, get } from '../lib/api';
 import { countryName, dayLabel, formatLabel, genreLabel, placeText } from '../lib/format';
-import { useToast } from '../lib/hooks';
+import { useEditor, useToast } from '../lib/hooks';
+import { EditingRequired, useUnlock } from '../components/Editor';
 import { WEEKDAYS } from '../../shared/taxonomy';
 
 interface WatchArtist {
@@ -91,6 +92,8 @@ export function ArtistsPage() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<WatchArtist | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'paused'>('all');
+  const editor = useEditor();
+  const unlock = useUnlock();
   const refresh = () => qc.invalidateQueries({ predicate: (x) => x.queryKey[0] !== 'meta' });
   const update = useMutation({
     mutationFn: ({ id, body }: { id: string; body: unknown }) => api('PUT', `/api/watchlist/${id}`, body),
@@ -103,9 +106,9 @@ export function ArtistsPage() {
     <div className="page">
       <PageHeader
         title="Artists"
-        sub="Your watchlist. Active artists are tracked across Europe, including festivals and Ibiza."
+        sub="Followed artists, shared by all your devices. Active artists are tracked across Europe — festivals and Ibiza included — in every scheduled search."
         actions={
-          <button type="button" className="btn btn-primary" onClick={() => setAdding(true)}>
+          <button type="button" className="btn btn-primary" onClick={() => (editor.unlocked ? setAdding(true) : unlock())}>
             <Plus size={16} aria-hidden /> Add artist
           </button>
         }
@@ -121,6 +124,7 @@ export function ArtistsPage() {
           ]}
         />
       </PageHeader>
+      {!editor.unlocked && <EditingRequired what="add, edit, pause or remove followed artists" />}
       <ErrorNote error={q.error} />
       {q.isLoading && <Spinner />}
       {!q.isLoading && !list.length && <Empty title="No artists here yet" icon={<Mic2 size={28} />} />}
@@ -137,7 +141,7 @@ export function ArtistsPage() {
                   {a.aliases.length > 0 && ` · also ${a.aliases.join(', ')}`}
                 </p>
               </div>
-              <div className="artist-actions">
+              {editor.unlocked && <div className="artist-actions">
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => update.mutate({ id: a.id, body: { status: a.status === 'active' ? 'paused' : 'active' } })} aria-label={`${a.status === 'active' ? 'Pause' : 'Resume'} tracking ${a.name}`}>
                   {a.status === 'active' ? <Pause size={15} aria-hidden /> : <Play size={15} aria-hidden />}
                   {a.status === 'active' ? 'Pause' : 'Resume'}
@@ -162,7 +166,7 @@ export function ArtistsPage() {
                 >
                   <Trash2 size={17} aria-hidden />
                 </button>
-              </div>
+              </div>}
             </header>
             {a.description ? (
               <p className="artist-desc">
@@ -227,7 +231,7 @@ export function ArtistsPage() {
           submitLabel="Add to watchlist"
           onSubmit={async (v) => {
             await api('POST', '/api/watchlist', v);
-            toast(`${v.name} added — research will pick this up on its next run`);
+            toast(`${v.name} added for all devices — the next scheduled search includes them`);
             setAdding(false);
             refresh();
           }}
@@ -255,6 +259,8 @@ export function ArtistDetailPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const q = useQuery({ queryKey: ['artist', id], queryFn: () => get(`/api/artists/${id}`) });
+  const editor = useEditor();
+  const unlock = useUnlock();
   const a = q.data;
   if (q.isLoading) return <Spinner />;
   if (!a) return <ErrorNote error={q.error} />;
@@ -275,6 +281,7 @@ export function ArtistDetailPage() {
               type="button"
               className="btn btn-primary"
               onClick={async () => {
+                if (!editor.unlocked) return unlock();
                 try {
                   await api('POST', '/api/watchlist', { artist_id: a.id });
                   toast(`${a.name} added to your watchlist`);

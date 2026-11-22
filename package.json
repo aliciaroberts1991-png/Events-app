@@ -2,7 +2,7 @@
   "name": "quartet-events",
   "version": "1.0.0",
   "private": true,
-  "description": "Quartet — personal events discovery and planning for Bratislava, Vienna, Budapest, Prague, European festivals and Ibiza.",
+  "description": "Quartet \u2014 personal events discovery and planning for Bratislava, Vienna, Budapest, Prague, European festivals and Ibiza.",
   "type": "module",
   "engines": {
     "node": ">=22.12"
@@ -14,7 +14,7 @@
     "build:server": "node scripts/build-server.mjs",
     "start": "node dist/server/index.js",
     "migrate": "tsx src/server/cli.ts migrate",
-    "owner:create": "tsx src/server/cli.ts owner",
+    "editor:password": "tsx src/server/cli.ts editor-password",
     "token:create": "tsx src/server/cli.ts token",
     "demo:load": "tsx src/server/cli.ts demo-load",
     "demo:remove": "tsx src/server/cli.ts demo-remove",

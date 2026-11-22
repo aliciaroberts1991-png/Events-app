@@ -23,7 +23,7 @@ honestly:
 
 ## Daily discovery
 
-1. `GET /context`. Use only the returned **active** watchlist (names, aliases, identifying links), interest weights, city coordinates, nearby radius and festival radius. Do not use a cached copy.
+1. `GET /context`. Use only the returned **active** watchlist (the central followed-artist list, which the owner edits on either device) (names, aliases, identifying links), interest weights, city coordinates, nearby radius and festival radius. Do not use a cached copy.
 2. Search, in this order of priority:
    - New appearances by active artists anywhere in Europe: tours, club sets, festival bookings, Ibiza dates. Record `format` as `live` or `dj_set` and so on, and distinguish similarly named acts using the links.
    - Electronic music in and around Bratislava, Vienna, Budapest and Prague: drum and bass, techno, house, trance, other electronic. Then major concerts, selected rock, and festivals nearby and across Europe.
@@ -36,7 +36,7 @@ honestly:
 
 ## Weekly verification
 
-1. `GET /verification-queue?limit=50`, then follow `next_offset` until done, or stop when out of time. The queue is ordered: booked/going first, then soonest events, then approaching ticket sales, then stale listings.
+1. `GET /verification-queue?limit=50`, then follow `next_offset` until done, or stop when out of time. The queue is ordered: listings that devices shared as booked/going first, then soonest events, then approaching ticket sales, then stale listings.
 2. For each event, re-check the sources.
    - Unchanged: `verifications[]` with `outcome: "confirmed"`.
    - Changed: send the event with `source_keys` and only the changed fields. Possible changes are date, venue, lineup, ticket status, price or sale dates. Add a verification with `outcome: "changed"`.
@@ -116,9 +116,9 @@ The current ChatGPT automation keeps a Bratislava event list. To move it onto th
 
 ## What the app guarantees for any executor
 
-- Imports never alter notes, statuses, bookings, plans, hidden events or owner-entered events.
+- Imports never touch personal data. Notes, statuses, bookings and plans are on the owner's devices, and shared listings added through the app are left alone.
 - Re-running the same research is idempotent. Partial updates only change the fields sent.
 - Failed or interrupted runs keep existing listings. Errors are recorded on the run.
 - Listings whose source disappears are kept and flagged, not deleted.
-- Rescheduled events keep their id, the owner's booking, and the previous date.
+- Rescheduled events keep their id (so device-held bookings stay attached) and record the previous date.
 - Alerts are de-duplicated, so unchanged information does not notify twice.

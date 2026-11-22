@@ -38,14 +38,15 @@ export async function generateFeedForChanges(ctx: AppContext, summaries: EventCh
   for (const u of users) {
     const p = await loadPersonalContext(ctx, u.id);
     const events = new Map((await hydrate(ctx, rows, p)).map((e) => [e.id, e]));
+    // Events a device has shared as Going/Booked (ids only) count as saved for alerts.
+    const priority = new Set((await ctx.db.selectFrom('priority_events').select('event_id').where('event_id', 'in', ids).execute()).map((r) => r.event_id));
     const drafts: Draft[] = [];
     const nowIso2 = ctx.now().toISOString();
     for (const s of summaries) {
       const e = events.get(s.eventId);
       if (!e || e.archived) continue;
       if (e.end_utc < nowIso2) continue;
-      if (e.state.hidden) continue;
-      const saved = e.state.favourite || e.state.plan_status !== 'none';
+      const saved = priority.has(e.id);
       const followed = e.artists.some((a) => a.followed);
       // A cancelled event loses its highlight score, so judge relevance as it was before.
       const relevant = saved || followed || (e.status === 'cancelled' ? e.score + 100 >= p.prefs.highlightThreshold : e.highlight);
@@ -118,9 +119,7 @@ export async function generateFeedForChanges(ctx: AppContext, summaries: EventCh
     for (const d of drafts) {
       if (enabled[d.type] === false) continue;
       const email = p.prefs.notifications.email;
-      const ev = events.get(d.event_id);
-      const emailWanted =
-        email.enabled && email.types.includes(d.type) && (!email.savedOnly || (ev && (ev.state.favourite || ev.state.plan_status !== 'none')));
+      const emailWanted = email.enabled && email.types.includes(d.type);
       const res = await ctx.db
         .insertInto('feed_items')
         .values({

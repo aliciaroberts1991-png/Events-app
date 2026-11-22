@@ -265,23 +265,30 @@ export function FilterBar({
   extra?: React.ReactNode;
 }) {
   const active = [f.cats, f.genres, f.english, f.followed].filter(Boolean).length + (f.range !== 'upcoming' ? 1 : 0) + (f.loc !== 'all4' ? 1 : 0);
+  const secondary = [f.cats, f.genres, f.english, f.followed].filter(Boolean).length + (f.sort !== 'date' ? 1 : 0);
+  const [more, setMore] = useState(false);
   return (
     <div className="filters" role="group" aria-label="Filters">
       <div className="filter-row">
         {!hideLocation && <LocationSelect f={f} set={set} hubs={hubs} />}
-        <MultiPicker kind="categories" value={f.cats ? f.cats.split(',') : []} onChange={(v) => set({ cats: v.join(',') })} />
-        <MultiPicker kind="genres" value={f.genres ? f.genres.split(',') : []} onChange={(v) => set({ genres: v.join(',') })} />
-        <label className="inline-check chip-check">
-          <input type="checkbox" checked={f.english === '1'} onChange={(e) => set({ english: e.target.checked ? '1' : '' })} />
-          English-friendly
-        </label>
-        {extra}
-        <SortSelect value={f.sort} onChange={(v) => set({ sort: v })} />
-        {active > 0 && (
-          <button type="button" className="btn btn-link" onClick={() => set({ ...DEFAULT_FILTERS, mode: f.mode })}>
-            Reset filters
-          </button>
-        )}
+        <button type="button" className={`chip filter-toggle ${secondary ? 'on-soft' : ''}`} aria-expanded={more} aria-controls="more-filters" onClick={() => setMore(!more)}>
+          <SlidersHorizontal size={14} aria-hidden /> Filters{secondary ? ` (${secondary})` : ''}
+        </button>
+        <div id="more-filters" className={`filter-more ${more ? 'open' : ''}`}>
+          <MultiPicker kind="categories" value={f.cats ? f.cats.split(',') : []} onChange={(v) => set({ cats: v.join(',') })} />
+          <MultiPicker kind="genres" value={f.genres ? f.genres.split(',') : []} onChange={(v) => set({ genres: v.join(',') })} />
+          <label className="inline-check chip-check">
+            <input type="checkbox" checked={f.english === '1'} onChange={(e) => set({ english: e.target.checked ? '1' : '' })} />
+            English-friendly
+          </label>
+          {extra}
+          <SortSelect value={f.sort} onChange={(v) => set({ sort: v })} />
+          {active > 0 && (
+            <button type="button" className="btn btn-link" onClick={() => set({ ...DEFAULT_FILTERS, mode: f.mode })}>
+              Reset filters
+            </button>
+          )}
+        </div>
       </div>
       <DateFilter f={f} set={set} label={rangeLabel} />
     </div>

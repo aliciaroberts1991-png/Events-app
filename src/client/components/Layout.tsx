@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { api, errorMessage, get } from '../lib/api';
 import { relative } from '../lib/format';
-import { useMeta, useStatus, useToast } from '../lib/hooks';
+import { useEditor, useMeta, useStatus, useToast } from '../lib/hooks';
+import { useLocal } from '../lib/local';
+import { LockButton, useUnlock } from './Editor';
 
 const NAV = [
   { to: '/', label: 'Discover', icon: Compass, end: true },
@@ -12,7 +14,6 @@ const NAV = [
   { to: '/festivals', label: 'Festivals', icon: Tent },
   { to: '/artists', label: 'Artists', icon: Mic2 },
   { to: '/ibiza', label: 'Ibiza', icon: Palmtree },
-  { to: '/calendar', label: 'My calendar', short: 'Calendar', icon: CalendarDays },
 ];
 
 export function StatusPill({ compact }: { compact?: boolean }) {
@@ -45,14 +46,18 @@ export function SearchNowButton() {
   const qc = useQueryClient();
   const toast = useToast();
   const status = useStatus();
+  const editor = useEditor();
+  const unlock = useUnlock();
   const [busy, setBusy] = useState(false);
   const active = status.data?.queue.active?.[0];
+  if (!editor.unlocked && !active) return null;
   return (
     <button
       type="button"
       className="btn btn-ghost btn-sm"
       disabled={busy || !!active}
       onClick={async () => {
+        if (!editor.unlocked) return unlock();
         setBusy(true);
         try {
           const r = await api('POST', '/api/runs', { type: 'adhoc' });
@@ -192,7 +197,8 @@ function SearchBox() {
 export function Layout({ children }: { children: ReactNode }) {
   const meta = useMeta();
   const feed = useQuery({ queryKey: ['feed'], queryFn: () => get('/api/feed'), refetchInterval: 60_000 });
-  const unread = feed.data?.unread ?? 0;
+  const local = useLocal();
+  const unread = (feed.data?.items ?? []).filter((i: any) => !local.feed_seen_at || i.created_at > local.feed_seen_at).length;
   const loc = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -228,6 +234,12 @@ export function Layout({ children }: { children: ReactNode }) {
           </ul>
           <ul className="nav-secondary">
             <li>
+              <NavLink to="/plans" className="nav-link">
+                <CalendarDays size={19} aria-hidden />
+                My plans
+              </NavLink>
+            </li>
+            <li>
               <NavLink to="/updates" className="nav-link">
                 <Bell size={19} aria-hidden />
                 Updates
@@ -250,6 +262,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar-foot">
           <StatusPill />
+          <LockButton />
         </div>
       </aside>
 
@@ -269,11 +282,16 @@ export function Layout({ children }: { children: ReactNode }) {
             <span className="hide-mobile">
               <SearchNowButton />
             </span>
+            <span className="hide-mobile">
+              <Link to="/add" className="btn btn-ghost btn-sm">
+                <Plus size={15} aria-hidden /> Add
+              </Link>
+            </span>
             <span className="show-mobile">
               <StatusPill compact />
             </span>
-            <Link to="/add" className="icon-btn show-mobile" aria-label="Add event or booking">
-              <Plus size={20} aria-hidden />
+            <Link to="/plans" className="icon-btn show-mobile" aria-label="My plans">
+              <CalendarDays size={20} aria-hidden />
             </Link>
             <Link to="/updates" className="icon-btn show-mobile bell" aria-label={`Updates${unread ? `, ${unread} unread` : ''}`}>
               <Bell size={20} aria-hidden />
@@ -287,7 +305,7 @@ export function Layout({ children }: { children: ReactNode }) {
         {meta.data?.demo.loaded && (
           <div className="demo-banner" role="note">
             Demo data is loaded: items marked <strong>Demo</strong> are fictional examples, not real listings.{' '}
-            <Link to="/settings/data">Remove demo data</Link>
+            <Link to="/settings/research">Manage demo data</Link>
           </div>
         )}
         <main id="main" ref={mainRef} tabIndex={-1}>
@@ -299,7 +317,7 @@ export function Layout({ children }: { children: ReactNode }) {
         {NAV.map((n) => (
           <NavLink key={n.to} to={n.to} end={n.end} className="bottom-link">
             <n.icon size={21} aria-hidden />
-            <span>{n.short ?? n.label}</span>
+            <span>{n.label}</span>
           </NavLink>
         ))}
       </nav>

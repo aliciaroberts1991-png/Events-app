@@ -30,26 +30,19 @@ export interface PersonalContext {
   feedbackGenres: Map<string, number>;
 }
 
+/** Central scoring context: interests and the followed-artist list (shared by every device). */
 export async function loadPersonalContext(ctx: AppContext, userId: string): Promise<PersonalContext> {
-  const [{ data: prefs }, watch, feedback] = await Promise.all([
+  const [{ data: prefs }, watch] = await Promise.all([
     getPreferences(ctx, userId),
     ctx.db.selectFrom('watchlist').select(['artist_id', 'status']).where('user_id', '=', userId).execute(),
-    ctx.db.selectFrom('feedback').select(['kind', 'categories', 'genres']).where('user_id', '=', userId).execute(),
   ]);
-  const fc = new Map<string, number>();
-  const fg = new Map<string, number>();
-  for (const f of feedback) {
-    const delta = f.kind === 'more_similar' ? 1 : f.kind === 'less_similar' ? -1 : 0;
-    if (!delta) continue;
-    for (const c of parseJson<string[]>(f.categories, [])) fc.set(c, (fc.get(c) ?? 0) + delta);
-    for (const g of parseJson<string[]>(f.genres, [])) fg.set(g, (fg.get(g) ?? 0) + delta);
-  }
+  // "Fewer like this" feedback is kept on each device and applied in the browser.
   return {
     userId,
     prefs,
     watch: new Map(watch.map((w) => [w.artist_id, w.status as 'active' | 'paused'])),
-    feedbackCategories: fc,
-    feedbackGenres: fg,
+    feedbackCategories: new Map(),
+    feedbackGenres: new Map(),
   };
 }
 

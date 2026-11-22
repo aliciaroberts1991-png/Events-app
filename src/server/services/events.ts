@@ -39,26 +39,6 @@ export interface Occurrence {
   end_time_known: boolean;
 }
 
-export interface EventState {
-  favourite: boolean;
-  hidden: boolean;
-  plan_status: string;
-  occurrence_id: string | null;
-  notes: string | null;
-  version: number;
-  booking_count: number;
-}
-
-export const EMPTY_STATE: EventState = {
-  favourite: false,
-  hidden: false,
-  plan_status: 'none',
-  occurrence_id: null,
-  notes: null,
-  version: 0,
-  booking_count: 0,
-};
-
 export interface EventSummary {
   id: string;
   kind: string;
@@ -116,7 +96,8 @@ export interface EventSummary {
   created_at: string;
   first_seen_at: string;
   archived: boolean;
-  state: EventState;
+  /** Present when requested with includeOccurrences (used for device-side calendars). */
+  occurrences?: Occurrence[];
 }
 
 const chunk = <T,>(arr: T[], n = 400): T[][] => {
@@ -126,14 +107,14 @@ const chunk = <T,>(arr: T[], n = 400): T[][] => {
 };
 
 /** Batch-load everything a card needs, for the given events. */
-export async function hydrate(ctx: AppContext, rows: EventRow[], p: PersonalContext | null, opts: { occurrencesFrom?: string } = {}): Promise<EventSummary[]> {
+export async function hydrate(ctx: AppContext, rows: EventRow[], p: PersonalContext | null, opts: { occurrencesFrom?: string; includeOccurrences?: boolean } = {}): Promise<EventSummary[]> {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   const db = ctx.db;
   const venueIds = [...new Set(rows.map((r) => r.venue_id).filter(Boolean) as string[])];
   const seriesIds = [...new Set(rows.map((r) => r.festival_series_id).filter(Boolean) as string[])];
 
-  const [cats, genres, lineup, venues, series, occs, states, bookingCounts] = await Promise.all([
+  const [cats, genres, lineup, venues, series, occs] = await Promise.all([
     Promise.all(chunk(ids).map((c) => db.selectFrom('event_categories').selectAll().where('event_id', 'in', c).execute())).then((x) => x.flat()),
     Promise.all(chunk(ids).map((c) => db.selectFrom('event_genres').selectAll().where('event_id', 'in', c).execute())).then((x) => x.flat()),
     Promise.all(
@@ -152,22 +133,6 @@ export async function hydrate(ctx: AppContext, rows: EventRow[], p: PersonalCont
     venueIds.length ? db.selectFrom('venues').select(['id', 'name', 'town', 'city', 'country']).where('id', 'in', venueIds).execute() : [],
     seriesIds.length ? db.selectFrom('festival_series').select(['id', 'name']).where('id', 'in', seriesIds).execute() : [],
     Promise.all(chunk(ids).map((c) => db.selectFrom('event_occurrences').selectAll().where('event_id', 'in', c).orderBy('start_utc').execute())).then((x) => x.flat()),
-    p
-      ? Promise.all(chunk(ids).map((c) => db.selectFrom('user_event_state').selectAll().where('user_id', '=', p.userId).where('event_id', 'in', c).execute())).then((x) => x.flat())
-      : [],
-    p
-      ? Promise.all(
-          chunk(ids).map((c) =>
-            db
-              .selectFrom('bookings')
-              .select(['event_id', db.fn.countAll<number>().as('n')])
-              .where('user_id', '=', p.userId)
-              .where('event_id', 'in', c)
-              .groupBy('event_id')
-              .execute(),
-          ),
-        ).then((x) => x.flat())
-      : [],
   ]);
 
   const by = <T extends { event_id: string }>(list: T[]) => {
@@ -183,14 +148,11 @@ export async function hydrate(ctx: AppContext, rows: EventRow[], p: PersonalCont
   const genreMap = by(genres);
   const lineupMap = by(lineup);
   const occMap = by(occs);
-  const stateMap = new Map(states.map((s) => [s.event_id, s]));
-  const bookingMap = new Map(bookingCounts.map((b) => [b.event_id, Number(b.n)]));
   const venueMap = new Map(venues.map((v) => [v.id, v]));
   const seriesMap = new Map(series.map((s) => [s.id, s]));
   const cutoff = opts.occurrencesFrom ?? ctx.now().toISOString();
 
   return rows.map((r) => {
-    const st = stateMap.get(r.id);
     const occList: Occurrence[] = (occMap.get(r.id) ?? []).map((o) => ({
       id: o.id,
       start_local: o.start_local,
@@ -280,17 +242,7 @@ export async function hydrate(ctx: AppContext, rows: EventRow[], p: PersonalCont
       created_at: r.created_at,
       first_seen_at: r.first_seen_at,
       archived: !!r.archived_at,
-      state: st
-        ? {
-            favourite: !!st.favourite,
-            hidden: !!st.hidden,
-            plan_status: st.plan_status,
-            occurrence_id: st.occurrence_id,
-            notes: st.notes,
-            version: st.version,
-            booking_count: bookingMap.get(r.id) ?? 0,
-          }
-        : { ...EMPTY_STATE, booking_count: bookingMap.get(r.id) ?? 0 },
+      ...(opts.includeOccurrences ? { occurrences: occList } : {}),
     };
     if (p) {
       const sc = scoreEvent(
@@ -340,8 +292,9 @@ export interface ListFilters {
   festivalScope?: 'nearby' | 'europe';
   festivalSeriesId?: string;
   residencyId?: string;
-  saved?: 'any' | 'favourites' | 'planned' | 'hidden';
-  includeHidden?: boolean;
+  /** Fetch these events (e.g. a device's saved events), past or future, ignoring the date range. */
+  ids?: string[];
+  includeOccurrences?: boolean;
   includePast?: boolean;
   sort?: 'date' | 'relevance' | 'recent';
   limit?: number;
@@ -353,6 +306,8 @@ export interface ListResult {
   total: number;
   range: ReturnType<typeof resolveRange>;
   counts: { highlights: number; all: number };
+  /** For id lookups: ids that no longer exist. */
+  missing?: string[];
 }
 
 export function matchesLocation(e: EventSummary, f: ListFilters, p: PersonalContext): boolean {
@@ -430,13 +385,13 @@ export async function listEvents(ctx: AppContext, userId: string, f: ListFilters
   const range = resolveRange(f.range ?? 'upcoming', p.prefs.planningTimezone, now, { from: f.from, to: f.to });
   const nowIso = ctx.now().toISOString();
   const lower = f.includePast ? range.fromUtc : range.fromUtc > nowIso ? range.fromUtc : nowIso;
+  if (f.ids) return listByIds(ctx, p, f.ids, range, !!f.includeOccurrences);
 
   let q = ctx.db
     .selectFrom('event_occurrences as o')
     .innerJoin('events as e', 'e.id', 'o.event_id')
     .select(['o.event_id', 'o.start_utc', 'o.span_end_utc'])
-    .where('o.span_end_utc', '>=', lower)
-    .where((w) => w.or([w('e.owner_user_id', 'is', null), w('e.owner_user_id', '=', userId)]));
+    .where('o.span_end_utc', '>=', lower);
   if (range.toUtc) q = q.where('o.start_utc', '<=', range.toUtc);
   if (!f.includePast) q = q.where('e.archived_at', 'is', null);
   if (f.kind) q = q.where('e.kind', '=', f.kind);
@@ -468,10 +423,6 @@ export async function listEvents(ctx: AppContext, userId: string, f: ListFilters
       });
       if (!near) return false;
     }
-    if (f.saved === 'favourites' && !e.state.favourite) return false;
-    if (f.saved === 'planned' && e.state.plan_status === 'none') return false;
-    if (f.saved === 'hidden') return e.state.hidden;
-    if (e.state.hidden && !f.includeHidden) return false;
     return true;
   });
 
@@ -499,45 +450,35 @@ export async function listEvents(ctx: AppContext, userId: string, f: ListFilters
   return { items: items.slice(offset, offset + limit), total, range, counts: { highlights: highlightsCount, all: allCount } };
 }
 
-export async function getEventRow(ctx: AppContext, id: string, userId?: string): Promise<EventRow> {
+async function listByIds(ctx: AppContext, p: PersonalContext, ids: string[], range: ListResult['range'], includeOccurrences: boolean): Promise<ListResult> {
+  const unique = [...new Set(ids)].slice(0, 500);
+  const rows: EventRow[] = [];
+  for (const c of chunk(unique)) rows.push(...(await ctx.db.selectFrom('events').selectAll().where('id', 'in', c).execute()));
+  const items = await hydrate(ctx, rows, p, { includeOccurrences });
+  items.sort((a, b) => (a.next_occurrence?.start_utc ?? a.start_utc).localeCompare(b.next_occurrence?.start_utc ?? b.start_utc));
+  return { items, total: items.length, range, counts: { highlights: items.filter((e) => e.highlight).length, all: items.length }, missing: unique.filter((id) => !rows.some((r) => r.id === id)) } as ListResult;
+}
+
+export async function getEventRow(ctx: AppContext, id: string): Promise<EventRow> {
   const row = await ctx.db.selectFrom('events').selectAll().where('id', '=', id).executeTakeFirst();
-  if (!row || (row.owner_user_id && userId && row.owner_user_id !== userId)) throw new HttpError(404, 'Event not found');
+  if (!row) throw new HttpError(404, 'Event not found');
   return row;
 }
 
 /** Everything for the detail page. */
 export async function getEventDetail(ctx: AppContext, userId: string, id: string) {
-  const row = await getEventRow(ctx, id, userId);
+  const row = await getEventRow(ctx, id);
   const p = await loadPersonalContext(ctx, userId);
   const [summary] = await hydrate(ctx, [row], p, { occurrencesFrom: '0000' });
-  const [venue, sources, changes, bookings, occurrences, residency, keys] = await Promise.all([
+  const [venue, sources, changes, occurrences, residency, keys] = await Promise.all([
     row.venue_id ? ctx.db.selectFrom('venues').selectAll().where('id', '=', row.venue_id).executeTakeFirst() : null,
     ctx.db.selectFrom('event_sources').selectAll().where('event_id', '=', id).orderBy('created_at').execute(),
     ctx.db.selectFrom('event_changes').selectAll().where('event_id', '=', id).orderBy('created_at', 'desc').limit(30).execute(),
-    ctx.db.selectFrom('bookings').selectAll().where('event_id', '=', id).where('user_id', '=', userId).orderBy('created_at').execute(),
     ctx.db.selectFrom('event_occurrences').selectAll().where('event_id', '=', id).orderBy('start_utc').execute(),
     row.residency_id ? ctx.db.selectFrom('residencies').select(['id', 'title', 'brand', 'season', 'status', 'weekday', 'start_date', 'end_date']).where('id', '=', row.residency_id).executeTakeFirst() : null,
     ctx.db.selectFrom('event_keys').select('key').where('event_id', '=', id).execute(),
   ]);
   const nowIso = ctx.now().toISOString();
-  let possibleMatches: { id: string; title: string; start_local: string; city: string | null }[] = [];
-  if (row.origin === 'manual') {
-    const day = row.start_local.slice(0, 10);
-    const cands = await ctx.db
-      .selectFrom('events')
-      .select(['id', 'title', 'start_local', 'city', 'normalized_title'])
-      .where('origin', '!=', 'manual')
-      .where('start_local', '>=', day)
-      .where('start_local', '<=', `${day}T99`)
-      .execute();
-    const words = new Set(row.normalized_title.split(' ').filter((w) => w.length > 2));
-    possibleMatches = cands
-      .filter((c) => {
-        const cw = c.normalized_title.split(' ').filter((w) => w.length > 2);
-        return cw.some((w) => words.has(w)) || (row.city && c.city && normalize(row.city) === normalize(c.city));
-      })
-      .map(({ id: cid, title, start_local, city }) => ({ id: cid, title, start_local, city }));
-  }
   return {
     ...summary,
     description: row.description,
@@ -572,7 +513,6 @@ export async function getEventDetail(ctx: AppContext, userId: string, id: string
       : mapLink({ lat: row.lat, lng: row.lng, name: row.location_text, city: row.city }),
     sources: sources.map((s) => ({ ...s, claims: parseJson<string[]>(s.claims, []) })),
     changes: changes.map((c) => ({ ...c, old_value: parseJson(c.old_value, c.old_value), new_value: parseJson(c.new_value, c.new_value) })),
-    bookings: bookings.map((b) => ({ ...b, links: parseJson<string[]>(b.links, []) })),
     occurrences: occurrences.map((o) => ({
       id: o.id,
       start_local: o.start_local,
@@ -584,6 +524,5 @@ export async function getEventDetail(ctx: AppContext, userId: string, id: string
       past: o.span_end_utc < nowIso,
     })),
     residency: residency ?? null,
-    possible_matches: possibleMatches,
   };
 }

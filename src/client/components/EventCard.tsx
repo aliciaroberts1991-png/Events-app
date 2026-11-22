@@ -14,7 +14,7 @@ export function StatusBadges({ e }: { e: EventSummary }) {
       {e.status === 'postponed' && <Badge tone="warn">Postponed</Badge>}
       {e.status === 'rescheduled' && <Badge tone="warn">Rescheduled</Badge>}
       {e.needs_review && <Badge tone="warn" title="The last check could not confirm this listing">Needs review</Badge>}
-      {e.origin === 'manual' && <Badge tone="neutral">Added by you</Badge>}
+      {e.origin === 'manual' && <Badge tone="neutral">Added in the app</Badge>}
       {e.ticket_status === 'sold_out' && <Badge tone="danger">Sold out</Badge>}
       {e.ticket_status === 'sale_not_started' && <Badge tone="info">Sale not started</Badge>}
     </>
@@ -35,7 +35,7 @@ export function PlanChip({ status }: { status: string }) {
 export function EventCard({ e, showDate = true }: { e: EventSummary; showDate?: boolean }) {
   const occ = displayOccurrence(e);
   const hubNames = useHubNames();
-  const fav = useEventState(e.id);
+  const { state, set } = useEventState(e);
   const near = nearText(e, hubNames);
   const headliners = e.artists.filter((a) => a.billing === 'headliner' || a.followed).slice(0, 3);
   const shown = headliners.length ? headliners : e.artists.slice(0, 2);
@@ -53,15 +53,15 @@ export function EventCard({ e, showDate = true }: { e: EventSummary; showDate?: 
           </p>
         )}
         <div className="card-flags">
-          <PlanChip status={e.state.plan_status} />
+          <PlanChip status={state.plan_status} />
           <button
             type="button"
-            className={`icon-btn fav ${e.state.favourite ? 'on' : ''}`}
-            aria-pressed={e.state.favourite}
-            aria-label={e.state.favourite ? `Remove ${e.title} from favourites` : `Add ${e.title} to favourites`}
-            onClick={() => fav.mutate({ favourite: !e.state.favourite })}
+            className={`icon-btn fav ${state.favourite ? 'on' : ''}`}
+            aria-pressed={state.favourite}
+            aria-label={state.favourite ? `Remove ${e.title} from favourites` : `Add ${e.title} to favourites`}
+            onClick={() => set({ favourite: !state.favourite })}
           >
-            <Heart size={18} aria-hidden fill={e.state.favourite ? 'currentColor' : 'none'} />
+            <Heart size={18} aria-hidden fill={state.favourite ? 'currentColor' : 'none'} />
           </button>
         </div>
       </div>
@@ -134,11 +134,11 @@ export function EventList({ items, rangeStart, empty }: { items: EventSummary[];
 }
 
 export function HideButton({ e }: { e: EventSummary }) {
-  const m = useEventState(e.id);
+  const { state, set } = useEventState(e);
   return (
-    <button type="button" className="btn btn-ghost" onClick={() => m.mutate({ hidden: !e.state.hidden })}>
-      {e.state.hidden ? <Eye size={16} aria-hidden /> : <EyeOff size={16} aria-hidden />}
-      {e.state.hidden ? 'Show again' : 'Hide'}
+    <button type="button" className="btn btn-ghost btn-sm" onClick={() => set({ hidden: !state.hidden })}>
+      {state.hidden ? <Eye size={16} aria-hidden /> : <EyeOff size={16} aria-hidden />}
+      {state.hidden ? 'Show again' : 'Hide'}
     </button>
   );
 }

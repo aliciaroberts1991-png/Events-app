@@ -1,3 +1,10 @@
+// Access model (revised requirements)
+// - Browsing is open: no sign-in is needed to read listings, artists or status.
+// - Central data (followed artists, interests, places, schedule, notifications, imports,
+//   tokens, shared listings) is owned by one "site" record and can only be changed after
+//   unlocking editing with the editor passphrase. Unlocking creates a long-lived,
+//   server-side editor session for that device (httpOnly cookie).
+// - Research executors use bearer tokens.
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -16,28 +23,54 @@ export async function hashPassword(password: string): Promise<string> {
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const [alg, n, r, p, salt, hash] = stored.split('$');
-  if (alg !== 'scrypt') return false;
+  if (alg !== 'scrypt' || !hash) return false;
   const expected = Buffer.from(hash, 'base64');
   const actual = await scrypt(password, Buffer.from(salt, 'base64'), expected.length, { N: Number(n), r: Number(r), p: Number(p), maxmem: SCRYPT.maxmem });
   return crypto.timingSafeEqual(expected, actual);
 }
 
-export const SESSION_COOKIE = 'quartet_session';
+export const SESSION_COOKIE = 'quartet_editor';
 
-export async function createUser(ctx: AppContext, email: string, password: string, displayName?: string) {
-  if (password.length < 10) throw new HttpError(400, 'Use a password of at least 10 characters');
-  const t = nowIso();
-  const id = newId('usr');
-  await ctx.db.insertInto('users').values({ id, email: email.toLowerCase().trim(), display_name: displayName ?? null, password_hash: await hashPassword(password), created_at: t, updated_at: t }).execute();
-  return id;
+let siteIdCache: { db: unknown; id: string } | null = null;
+
+/** The single record that owns central settings and the followed-artist list. */
+export async function siteId(ctx: AppContext): Promise<string> {
+  if (siteIdCache && siteIdCache.db === ctx.db) return siteIdCache.id;
+  let row = await ctx.db.selectFrom('users').select('id').orderBy('created_at').executeTakeFirst();
+  if (!row) {
+    const t = nowIso();
+    const id = newId('usr');
+    await ctx.db
+      .insertInto('users')
+      .values({ id, email: (ctx.config.ownerEmail ?? 'editor@local').toLowerCase(), display_name: 'Site', password_hash: '', created_at: t, updated_at: t })
+      .onConflict((oc) => oc.column('email').doNothing())
+      .execute();
+    row = await ctx.db.selectFrom('users').select('id').orderBy('created_at').executeTakeFirstOrThrow();
+  }
+  siteIdCache = { db: ctx.db, id: row.id };
+  return row.id;
 }
 
-/** Creates the owner from OWNER_EMAIL / OWNER_PASSWORD when no account exists yet. */
-export async function ensureOwnerFromEnv(ctx: AppContext) {
-  const count = await ctx.db.selectFrom('users').select(ctx.db.fn.countAll<number>().as('n')).executeTakeFirst();
-  if (Number(count?.n ?? 0) > 0) return null;
-  if (!ctx.config.ownerEmail || !ctx.config.ownerPassword) return null;
-  return createUser(ctx, ctx.config.ownerEmail, ctx.config.ownerPassword, 'Owner');
+/** EDITOR_PASSWORD (when set) is the source of truth for the editor passphrase. */
+export async function applyEditorPasswordFromEnv(ctx: AppContext) {
+  const id = await siteId(ctx);
+  const pw = ctx.config.editorPassword;
+  if (!pw) return;
+  const row = await ctx.db.selectFrom('users').select('password_hash').where('id', '=', id).executeTakeFirstOrThrow();
+  if (row.password_hash && (await verifyPassword(pw, row.password_hash))) return;
+  await setEditorPassword(ctx, pw);
+}
+
+export async function setEditorPassword(ctx: AppContext, password: string) {
+  if (password.length < 10) throw new HttpError(400, 'Use a passphrase of at least 10 characters');
+  const id = await siteId(ctx);
+  await ctx.db.updateTable('users').set({ password_hash: await hashPassword(password), updated_at: nowIso() }).where('id', '=', id).execute();
+}
+
+export async function editingConfigured(ctx: AppContext) {
+  const id = await siteId(ctx);
+  const row = await ctx.db.selectFrom('users').select('password_hash').where('id', '=', id).executeTakeFirst();
+  return !!row?.password_hash;
 }
 
 export async function createSession(ctx: AppContext, userId: string, userAgent: string | undefined) {
@@ -55,31 +88,24 @@ export function setSessionCookie(ctx: AppContext, reply: FastifyReply, token: st
   reply.setCookie(SESSION_COOKIE, token, { httpOnly: true, secure: ctx.config.cookieSecure, sameSite: 'lax', path: '/', expires });
 }
 
-export interface AuthedUser {
-  id: string;
-  email: string;
-  display_name: string | null;
+export interface EditorSession {
+  site_id: string;
   session_id: string;
 }
 
 declare module 'fastify' {
   interface FastifyRequest {
-    user?: AuthedUser;
+    editor?: EditorSession;
     researchToken?: { id: string; name: string };
   }
 }
 
-/** Sliding expiry: active sessions are extended, so phone and laptop stay signed in. */
-export async function authenticateSession(ctx: AppContext, req: FastifyRequest, reply: FastifyReply): Promise<AuthedUser | null> {
+/** Returns the editor session for this request, if editing is unlocked on this device. Sliding expiry. */
+export async function authenticateEditor(ctx: AppContext, req: FastifyRequest, reply: FastifyReply): Promise<EditorSession | null> {
   const token = req.cookies?.[SESSION_COOKIE];
   if (!token) return null;
   const sid = sha256(token);
-  const row = await ctx.db
-    .selectFrom('sessions as s')
-    .innerJoin('users as u', 'u.id', 's.user_id')
-    .select(['s.id', 's.expires_at', 's.last_seen_at', 'u.id as user_id', 'u.email', 'u.display_name'])
-    .where('s.id', '=', sid)
-    .executeTakeFirst();
+  const row = await ctx.db.selectFrom('sessions').select(['id', 'user_id', 'expires_at', 'last_seen_at']).where('id', '=', sid).executeTakeFirst();
   const now = ctx.now();
   if (!row || row.expires_at < now.toISOString()) return null;
   if (now.getTime() - Date.parse(row.last_seen_at) > 3600_000) {
@@ -87,10 +113,10 @@ export async function authenticateSession(ctx: AppContext, req: FastifyRequest, 
     await ctx.db.updateTable('sessions').set({ last_seen_at: now.toISOString(), expires_at: expires.toISOString() }).where('id', '=', sid).execute();
     setSessionCookie(ctx, reply, token, expires);
   }
-  return { id: row.user_id, email: row.email, display_name: row.display_name, session_id: sid };
+  return { site_id: row.user_id, session_id: sid };
 }
 
-// ---- Login throttling (in memory; enough for a single-owner app)
+// ---- Unlock throttling (in memory; enough for a single-site app)
 const attempts = new Map<string, { count: number; until: number }>();
 export function checkLoginThrottle(key: string) {
   const a = attempts.get(key);

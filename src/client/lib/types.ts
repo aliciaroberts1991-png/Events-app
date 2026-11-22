@@ -27,16 +27,6 @@ export interface LineupEntry {
   genres: string[];
 }
 
-export interface EventState {
-  favourite: boolean;
-  hidden: boolean;
-  plan_status: 'none' | 'interested' | 'going' | 'booked';
-  occurrence_id: string | null;
-  notes: string | null;
-  version: number;
-  booking_count: number;
-}
-
 export interface EventSummary {
   id: string;
   kind: string;
@@ -91,7 +81,7 @@ export interface EventSummary {
   created_at: string;
   first_seen_at: string;
   archived: boolean;
-  state: EventState;
+  occurrences?: Occurrence[];
 }
 
 export interface EventDetail extends EventSummary {
@@ -123,24 +113,8 @@ export interface EventDetail extends EventSummary {
   map_url: string | null;
   sources: { id: string; url: string; source_type: string; name: string | null; claims: string[]; retrieved_at: string | null; status: string }[];
   changes: { id: string; change_type: string; field: string | null; old_value: unknown; new_value: unknown; created_at: string }[];
-  bookings: Booking[];
   occurrences: Occurrence[];
   residency: { id: string; title: string; brand: string | null; season: number; status: string; weekday: number | null; start_date: string | null; end_date: string | null } | null;
-  possible_matches: { id: string; title: string; start_local: string; city: string | null }[];
-}
-
-export interface Booking {
-  id: string;
-  event_id: string;
-  provider: string | null;
-  amount: number | null;
-  currency: string | null;
-  reference: string | null;
-  quantity: number | null;
-  ticket_type: string | null;
-  links: string[];
-  notes: string | null;
-  booked_on: string | null;
 }
 
 export interface ListResult {
@@ -148,6 +122,7 @@ export interface ListResult {
   total: number;
   range: { preset: string; fromDate: string; toDate: string | null; label: string };
   counts: { highlights: number; all: number };
+  missing?: string[];
 }
 
 export interface Meta {

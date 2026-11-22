@@ -7,8 +7,8 @@ Machine-readable descriptions:
 - `GET /api/research/v1/openapi.json` (no auth): OpenAPI 3.1, suitable for ChatGPT Actions. A copy is in `docs/schemas/openapi.json`.
 - `docs/schemas/research-import.schema.json`: JSON Schema of the import payload.
 
-The API never exposes personal records: notes, statuses, bookings, plans or owner-entered events.
-It cannot change them either.
+Personal planning data (notes, statuses, bookings, plans) lives on the owner's devices and never
+reaches the server. The API cannot change shared listings that were added through the app.
 
 ## Protocol for a run
 
@@ -35,9 +35,9 @@ If the executor stops without completing, the lease expires. The run becomes `fa
 | `GET /context` | Active and paused watchlist (ids, aliases, links, keys), interest weights, cities with coordinates and nearby radius, festival radius, Ibiza, coverage, research rules |
 | `GET /watchlist` | Full watchlist |
 | `GET /taxonomy` | Valid category and genre slugs |
-| `GET /events?upcoming=true&updated_since=…&q=…&limit=…&offset=…` | Researched events with `source_keys` (owner-entered events excluded) |
+| `GET /events?upcoming=true&updated_since=…&q=…&limit=…&offset=…` | Researched events with `source_keys` (listings added through the app are excluded) |
 | `GET /events/{id}` | Full facts for one event: lineup, sources, change history, occurrences |
-| `GET /verification-queue?limit=50&offset=0` | Upcoming listings in priority order: booked/going → within 7 or 30 days → ticket sale within 14 days → never or not recently verified → flagged |
+| `GET /verification-queue?limit=50&offset=0` | Upcoming listings in priority order: listings a device has shared as booked or going (ids only) → within 7 or 30 days → ticket sale within 14 days → never or not recently verified → flagged |
 | `POST /runs` | `{"type":"discovery"\|"verification"\|"adhoc","executor":"…","params":{}}` → a running run |
 | `POST /runs/claim` | `{"executor":"…","types":["discovery"]}` → claimed run + brief, or 204 |
 | `GET /runs/{id}` | Run and recorded errors |
@@ -92,7 +92,7 @@ If the executor stops without completing, the lease expires. The run becomes `fa
 - Absent fields keep their stored value. `null` clears a field.
 - Lists merge unless `"<field>_mode": "replace"` is sent.
 - Only report ticket `available` or `sold_out` after checking a live ticket page. A listing page alone does not establish inventory. Otherwise use `unknown` or `sale_not_started`.
-- A changed `start` keeps the event id, records the previous date and keeps the owner's booking. Set `status: "rescheduled"` when that is what happened.
+- A changed `start` keeps the event id and records the previous date. Bookings and notes held on the owner's devices refer to that id, so they stay attached. Set `status: "rescheduled"` when that is what happened.
 
 ### Response
 
