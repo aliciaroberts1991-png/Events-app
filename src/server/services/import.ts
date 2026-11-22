@@ -149,7 +149,8 @@ export async function importBatch(ctx: AppContext, raw: unknown, opts: ImportOpt
     stats.batches = (stats.batches ?? 0) + 1;
     await ctx.db.updateTable('research_runs').set({ stats: JSON.stringify(stats), heartbeat_at: nowIso(), updated_at: nowIso() }).where('id', '=', runId).execute();
   }
-  if (counts.created + counts.updated + counts.unchanged > 0) {
+  // Demo data never counts as a real update.
+  if (!isDemo && counts.created + counts.updated + counts.unchanged > 0) {
     await setSetting(ctx, 'last_successful_import_at', nowIso());
   }
   return result;

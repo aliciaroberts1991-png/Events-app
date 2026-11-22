@@ -120,6 +120,13 @@ export function buildDemoPayload(now: Date): ImportPayload {
   const ibizaSeason = today.month >= 10 ? today.year + 1 : today.year;
   const demoSource = (slug: string) => [{ url: `https://example.org/demo/${slug}`, type: 'other' as const, name: 'Demo data — not a real listing' }];
   const sale = today.plus({ days: 10 }).toISODate()!;
+  // First given weekday (1 = Monday … 7 = Sunday) on or after a date in the Ibiza season.
+  const onOrAfter = (mmdd: string, weekday: number) => {
+    const base = DateTime.fromISO(`${ibizaSeason}-${mmdd}`);
+    return base.plus({ days: (weekday - base.weekday + 7) % 7 }).toISODate()!;
+  };
+  const rebelStart = onOrAfter('06-05', 7);
+  const rebelEnd = onOrAfter('10-01', 7);
 
   return {
     artists: [
@@ -139,8 +146,8 @@ export function buildDemoPayload(now: Date): ImportPayload {
         brand: 'Rebel Sundays',
         venue: V.laguna,
         weekday: 7,
-        start_date: `${ibizaSeason}-06-07`,
-        end_date: `${ibizaSeason}-10-04`,
+        start_date: rebelStart,
+        end_date: rebelEnd,
         status: 'confirmed',
         description: 'Demo residency for trying the Ibiza view. Not a real announcement.',
         residents: [{ name: 'Damian Lazarus' }, { artist_key: 'demo:artist:lumen-drift' }],
@@ -153,8 +160,8 @@ export function buildDemoPayload(now: Date): ImportPayload {
         brand: 'Bass Theory',
         venue: V.faro,
         weekday: 2,
-        start_date: `${ibizaSeason}-06-16`,
-        end_date: `${ibizaSeason}-09-22`,
+        start_date: onOrAfter('06-14', 2),
+        end_date: onOrAfter('09-20', 2),
         status: 'announced',
         description: 'Demo drum and bass residency. Lineups to be announced.',
         residents: [{ artist_key: 'demo:artist:velvet-circuit' }],
@@ -167,8 +174,8 @@ export function buildDemoPayload(now: Date): ImportPayload {
         brand: 'Melodic Mondays',
         venue: V.laguna,
         weekday: 1,
-        start_date: `${ibizaSeason}-06-15`,
-        end_date: `${ibizaSeason}-09-28`,
+        start_date: onOrAfter('06-13', 1),
+        end_date: onOrAfter('09-26', 1),
         status: 'announced',
         residents: [{ artist_key: 'demo:artist:mara-kova' }],
         sources: demoSource('melodic-mondays'),
@@ -357,7 +364,7 @@ export function buildDemoPayload(now: Date): ImportPayload {
           status: 'available',
           tiers: [
             { name: '3-day pass', price: 149, currency: 'EUR' },
-            { name: 'Day ticket (Friday)', price: 59, currency: 'EUR', day: `${summer}-07-10` },
+            { name: 'Day ticket', price: 59, currency: 'EUR', day: `${summer}-07-10` },
             { name: 'Camping add-on', price: 35, currency: 'EUR' },
           ],
         },
@@ -393,7 +400,7 @@ export function buildDemoPayload(now: Date): ImportPayload {
       {
         source_keys: ['demo:evt:ibiza-opening'],
         title: `Rebel Sundays opening party ${ibizaSeason} (demo)`,
-        start: `${ibizaSeason}-06-07T16:00`,
+        start: `${rebelStart}T16:00`,
         end: '04:00',
         timezone: 'Europe/Madrid',
         venue: V.laguna,
@@ -412,7 +419,7 @@ export function buildDemoPayload(now: Date): ImportPayload {
       {
         source_keys: ['demo:evt:ibiza-rebel-july'],
         title: 'Rebel Sundays (demo)',
-        start: `${ibizaSeason}-07-19T17:00`,
+        start: `${onOrAfter('07-17', 7)}T17:00`,
         end: '04:00',
         timezone: 'Europe/Madrid',
         venue: V.laguna,
@@ -427,7 +434,7 @@ export function buildDemoPayload(now: Date): ImportPayload {
       {
         source_keys: ['demo:evt:ibiza-bass-theory'],
         title: 'Bass Theory: Velvet Circuit (demo)',
-        start: `${ibizaSeason}-07-21T23:00`,
+        start: `${onOrAfter('07-19', 2)}T23:00`,
         end: '06:00',
         timezone: 'Europe/Madrid',
         venue: V.faro,
@@ -442,7 +449,7 @@ export function buildDemoPayload(now: Date): ImportPayload {
       {
         source_keys: ['demo:evt:ibiza-closing'],
         title: `Rebel Sundays closing party ${ibizaSeason} (demo)`,
-        start: `${ibizaSeason}-10-04T16:00`,
+        start: `${rebelEnd}T16:00`,
         end: '04:00',
         timezone: 'Europe/Madrid',
         venue: V.laguna,

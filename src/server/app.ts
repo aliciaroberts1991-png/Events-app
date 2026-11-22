@@ -67,7 +67,8 @@ export async function buildApp(overrides: Partial<Config> = {}, opts: { now?: ()
 
   const clientDir = path.resolve(process.cwd(), 'dist/client');
   if (fs.existsSync(path.join(clientDir, 'index.html'))) {
-    await app.register(fastifyStatic, { root: clientDir, wildcard: false, maxAge: '1h' });
+    await app.register(fastifyStatic, { root: clientDir, wildcard: true, maxAge: '1h', index: false });
+    app.get('/', (_req, reply) => reply.type('text/html').header('cache-control', 'no-cache').sendFile('index.html'));
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/')) return reply.code(404).send({ error: 'Not found' });
       return reply.type('text/html').header('cache-control', 'no-cache').sendFile('index.html');
